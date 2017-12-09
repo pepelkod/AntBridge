@@ -1,0 +1,13 @@
+ASPBERRY PI- you need to make a small change to how the dongle is recognised. Create and edit the file:
+
+/etc/udev/rules.d/garmin-ant2.rules
+
+and add the following line:
+
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fcf", ATTRS{idProduct}=="1009", RUN+="/sbin/modprobe usbserial vendor=0x0fcf product=0x1009"
+
+(replace both 1009 entries with 1008 is lsusb shows your product id number as that)
+
+REBOOT
+
+Tested and working with raspberry pi 3 and latest raspbian 

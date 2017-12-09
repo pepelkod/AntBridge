@@ -79,11 +79,11 @@ Fortius::Fortius()
 	memcpy(ERGO_Command, ergo_command, 12);
 	memcpy(SLOPE_Command, slope_command, 12);
 
-	std::cout << "Fortius::Fortius: new LibUsb\n";
+	std::cout << "\nFortius::Fortius: new LibUsb\n";
 	// for interacting over the USB port
 	usb2 = new LibUsb(TYPE_FORTIUS);
 
-	std::cout << "Fortius::Fortius: pthread_mutex_init\n";
+	std::cout << "\nFortius::Fortius: pthread_mutex_init\n";
 	pthread_mutex_init(&pvars, NULL);
 }
 
@@ -277,7 +277,7 @@ Fortius::start()
 	this->deviceStatus = FT_RUNNING;
 	pthread_mutex_unlock(&pvars);
 
-	std::cout << "Fortius::start: pthread_create\n";
+	std::cout << "\nFortius::start: pthread_create\n";
 	pthread_create(&thread_handle, NULL, Fortius::run_helper, this);
 	return 0;
 }
@@ -374,7 +374,7 @@ int Fortius::quit(int code)
 
 void* Fortius::run_helper(void* This)
 {
-	std::cout <<"Fortius::run_helper: entry\n";
+	std::cout <<"\nFortius::run_helper: entry\n";
 
 	Fortius*    me = (Fortius*)This;
 
@@ -387,7 +387,7 @@ void* Fortius::run_helper(void* This)
  *----------------------------------------------------------------------*/
 void Fortius::run()
 {
-	std::cout<<"Fortius::run: starting\n";
+	std::cout<<"\nFortius::run: starting\n";
 
 	// newly read values - compared against cached values
 	bool isDeviceOpen = false;
@@ -433,7 +433,7 @@ void Fortius::run()
 
 	// open the device
 	if (openPort()) {
-		std::cout<<"Fortius::run: openPort failed with "<<strerror(errno)<<"\n";
+		std::cout<<"\nFortius::run: openPort failed with "<<strerror(errno)<<"\n";
 		quit(2);
 		return; // open failed!
 	} else {
@@ -447,7 +447,7 @@ void Fortius::run()
 		if (isDeviceOpen == true) {
 			int rc = sendRunCommand(pedalSensor) ;
 			if (rc < 0) {
-				std::cout << "Fortius::run: usb write error " << rc;
+				std::cout << "\nFortius::run: usb write error " << rc;
 				// send failed - ouch!
 				//closePort(); // need to release that file handle!!
 				//quit(4);
@@ -456,7 +456,7 @@ void Fortius::run()
 			}
 			int actualLength = readMessage();
 			if (actualLength < 0) {
-				std::cout << "Foritus::run: usb read error " << actualLength;
+				std::cout << "\nForitus::run: usb read error " << actualLength;
 			}
 			if (actualLength >= 24) {
 
@@ -540,7 +540,7 @@ void Fortius::run()
 
 			}
 			if(actualLength != 24 && actualLength != 48) {
-				printf("Error: got a length of %d --------------------------------------------------------------------\n", actualLength);
+				printf("\nFortius::run: error, got a length of %d --------------------------------------------------------------------\n", actualLength);
 			}
 		}
 

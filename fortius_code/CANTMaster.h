@@ -33,11 +33,23 @@
 
 #define PAGE_BASIC_RESISTANCE	0x30
 #define PAGE_TARGET_POWER	0x31
+#define PAGE_WIND_RESISTANCE	0x32
 #define PAGE_TRACK_RESISTANCE	0x33
 #define PAGE_USER_CONFIGURATION	0x37	// 55
-#define PAGE_COMMAND_STATUS	0x47
 #define PAGE_REQUEST		0x46
+#define PAGE_COMMAND_STATUS	0x47
 
+#define PAGE_GENERAL_FE		0x10	// 16
+#define PAGE_GENERAL_SETTINGS	0x11	// 17
+#define PAGE_SPECIFIC_TRAINER	0x19	// 25
+#define PAGE_FE_CAPABILITIES	0x36
+#define PAGE_MANUFACTURER_INFORMATION	0x80
+#define PAGE_PRODUCT_INFORMATION	0x81
+
+#define REQUEST_DATA_PAGE		1
+#define REQUEST_ANT_FS_SESSION		2
+#define REQUEST_DATA_PAGE_FROM_SLAVE	3
+#define REQUEST_DATA_PAGE_SET		4
 
 #define USER_CONFIG_STATE_EMPTY 1
 #define USER_CONFIG_STATE_WAITING 2
@@ -54,6 +66,13 @@ typedef struct target_power_s {
 	uint8_t		reserved[5];		// 0xFF
 	uint16_t	target_power_quarter_watts;	// 0.25w increments 0-4000w
 } target_power_t;
+typedef struct wind_resistance_s{
+	uint8_t		data_page_number;	// 0x32 page 50
+	uint32_t	reserved;		// 0xFFFFFFFF
+	uint8_t		wind_resistance_coef;	// 0.01kg/m
+	int8_t		wind_speed;		// km -127 to 127
+	uint8_t		drafting_factor;	// 0.01 0-1
+} wind_resistance_t;
 typedef struct track_resistance_s {
 	uint8_t		data_page_number;	// 0x33 page 51
 	uint32_t	reserved;		// 0xFFFFFFFF
@@ -116,19 +135,24 @@ private:
 	double		calc_power_required_watts(double velocity_kph, double grade);
 
 	bool		send_request_page(uint8_t request_page);
-	bool		send_general_fe(double accumulated_time_seconds, uint8_t  distance, uint16_t speed, uint8_t heart_rate, uint8_t lap);
-	bool		send_general_settings(double incline_percent, uint8_t resistance);
-	bool		send_specific_trainer(uint8_t cadence, uint16_t power);
+	bool		send_general_fe();
+	bool		send_general_settings();
+	bool		send_specific_trainer();
 	bool		send_fe_capabilities();
 	bool		send_target_power(uint16_t input_target_power_watts);
-	bool		send_common_data_page_80();
-	bool		send_common_data_page_81();
+	bool		send_manufacturer_information();
+	bool		send_product_information();
+	bool		send_command_status();
+
+	bool		send(uint8_t* data);
 
 	bool		process_basic_resistance(basic_resistance_t* basic_resistance);
 	bool		process_target_power(target_power_t* target_power);
+	bool		process_wind_resistance(wind_resistance_t* wind_resistance);
 	bool		process_track_resistance(track_resistance_t* track_resistance);
-	bool		process_request(request_t* request);
 	bool		process_user_configuration(user_configuration_t*);
+	bool		process_request(request_t* request);
+
 public:
 	static CANTMaster*	this_ptr;
 private:
@@ -140,16 +164,36 @@ private:
 	int			m_retry_count;
 	Fortius*		m_fortius;
 	uint8_t			m_channel_number;
+	uint8_t			m_user_config_state;			// USER_CONFIG_STATE_EMPTY->USER_CONFIG_STATE_WAITING->USER_CONFIG_STATE_RX;	
+	uint16_t		m_device_id;
 
+	pthread_mutex_t		m_vars_mutex;
+
+	uint8_t			m_last_rx_command_id;
+	uint8_t			m_sequence_number;	
+	uint32_t		m_start_seconds;
+	uint8_t			m_command_status;
+	// read from fortius
+	double			m_speed_kph;
+	double			m_power_produced_watts;
+	double			m_heartrate_bpm;
+	double			m_cadence_rpm;
+	double			m_distance_meters;
+	uint8_t			m_buttons;
+
+	uint8_t			m_requested_mode;
+	// from set target power
+	double			m_target_power_watts;
+	// from wind_resistance page 50
+	double			m_wind_resistance_coef;
+	double			m_wind_speed;
+	double			m_drafting_factor;
+	// from track_resistance page 51
+	double			m_slope;
+	double			m_crr;
+	// from user config
 	double			m_user_weight_kg;
 	double			m_bike_weight_kg;
 	double			m_wheel_circumference_mm;
-
-
-	uint8_t			m_user_config_state;			// USER_CONFIG_STATE_EMPTY->USER_CONFIG_STATE_WAITING->USER_CONFIG_STATE_RX;	
-	uint16_t		m_device_id;
-	double			m_speed_kph;
-	double			m_slope;
-	pthread_mutex_t		m_vars_mutex;
 };
 
