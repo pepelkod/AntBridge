@@ -334,12 +334,13 @@ bool CANTMaster::process_target_power(target_power_t*	target_power)
 	target_power_watts = target_power->target_power_quarter_watts;	// the message comes in 1/4 watt increments
 	target_power_watts /= 4;					// so wait until it is in the double and div by 4
 
-	printf("\ntarget_power_watts %f\n", target_power_watts);
 	
 	pthread_mutex_lock(&m_vars_mutex);
 	m_target_power_watts = target_power_watts;
 	m_requested_mode = FT_ERGOMODE;
 	pthread_mutex_unlock(&m_vars_mutex);
+
+	printf("\nSET: target_power_watts %f\n", target_power_watts);
 
 	return true;
 
@@ -347,24 +348,40 @@ bool CANTMaster::process_target_power(target_power_t*	target_power)
 
 bool CANTMaster::process_wind_resistance(wind_resistance_t* wind_resistance)
 {
-	double wind_speed;
+	double wind_speed_kph;
 	double drafting_factor;
 	double wind_resistance_coef;
 
 	if(PAGE_WIND_RESISTANCE != wind_resistance->data_page_number) {
 		return false;
 	}
-	wind_resistance_coef = wind_resistance->wind_resistance_coef;
-	wind_resistance_coef *= 0.01;  	// convert to kg/m
-	wind_speed = wind_resistance->wind_speed;
-	drafting_factor = wind_resistance->drafting_factor;
-	drafting_factor *= 0.01;	// convert to range 0-1
+	if(wind_resistance->wind_resistance_coef == 0xFF){
+		// set to default
+		wind_resistance_coef = 0.51;
+	}else{
+		wind_resistance_coef = wind_resistance->wind_resistance_coef;
+		wind_resistance_coef *= 0.01;  	// convert to kg/m
+	}
+	if(((uint8_t)wind_resistance->wind_speed) == 0xFF ){
+		// default
+		wind_speed_kph = 0;
+	}else{
+		wind_speed_kph = wind_resistance->wind_speed;
+	}
+	if(wind_resistance->drafting_factor == 0xFF){
+		// default
+		drafting_factor = 1.0;
+	}else{
+		drafting_factor = wind_resistance->drafting_factor;
+		drafting_factor *= 0.01;	// convert to range 0-1
+	}
 
 	pthread_mutex_lock(&m_vars_mutex);
 	m_wind_resistance_coef = wind_resistance_coef;
-	m_wind_speed = wind_speed;
+	m_wind_speed_kph = wind_speed_kph;
 	m_drafting_factor = drafting_factor;
 	pthread_mutex_unlock(&m_vars_mutex);
+	printf("\nSET: wind resistance coef %f wind speed %f drafting factor %f\n", wind_resistance_coef, wind_speed_kph, drafting_factor);
 	return true;
 }
 
@@ -376,22 +393,34 @@ bool CANTMaster::process_track_resistance(track_resistance_t* track_resistance)
 	if(PAGE_TRACK_RESISTANCE != track_resistance->data_page_number) {
 		return false;
 	}
-	slope = track_resistance->slope;
-	slope *= 0.01;
-	slope -= 200;
-	//printf("\nrequested slope %f\n", slope_fraction);
-	crr = track_resistance->coefficient_of_rolling;
-	crr *= 0.00005;
+	if(((uint16_t)track_resistance->slope) == 0xFFFF){
+		/// default;
+		slope = 0;
+	}else{
+		slope = track_resistance->slope;
+		slope *= 0.01;
+		slope -= 200;
+		//printf("\nrequested slope %f\n", slope;
+	}
+	if(track_resistance->coefficient_of_rolling == 0xFF){
+		// default
+		crr = 0.004;
+	}else{
+		crr = track_resistance->coefficient_of_rolling;
+		crr *= 0.00005;
+	}
 
 	pthread_mutex_lock(&m_vars_mutex);
 	m_slope = slope;
 	m_crr = crr;
 	m_requested_mode = FT_SSMODE;	// we will calculate power
 	pthread_mutex_unlock(&m_vars_mutex);
-	/*
+
+	/* TODO: resolve the Slope mode issue
 	m_fortius->setMode(FT_SSMODE);
 	m_fortius->setGradient(slope_double/100);
 	*/
+	printf("\nSET: slope %f crr %f\n", slope, crr);
 	return true;
 }
 
@@ -405,12 +434,32 @@ bool CANTMaster::process_user_configuration(user_configuration_t* user_configura
 	if(PAGE_USER_CONFIGURATION != user_configuration->data_page_number) {
 		return false;
 	}
-	user_weight_kg = user_configuration->user_weight;		// in 0.01kg
-	user_weight_kg *= 0.01;			// convert to kg
-	wheel_diameter_mm = user_configuration->wheel_diameter_offset;	// 1mm
-	bike_weight_kg = user_configuration->bike_weight;		// 0.05kg
-	bike_weight_kg *= 0.05;			// convert to kg
-	wheel_diameter_mm = (10 * user_configuration->wheel_diameter);		// 0.01m (extract and convert to mm)
+	if(user_configuration->user_weight == 0xFFFF){
+		// default
+		user_weight_kg = 75;	// default from section 7.8.4.1 of D000001231_-_ANT+_Device_Profile_-_Fitness_Equipment_-_Rev_4.2.pdf
+	}else{
+		user_weight_kg = user_configuration->user_weight;		// in 0.01kg
+		user_weight_kg *= 0.01;			// convert to kg
+	}
+	if(user_configuration->wheel_diameter_offset == 0xF){
+		// default;
+		wheel_diameter_mm = 0;	// start with no offset. we will add the actual diameter later
+	}else{
+		wheel_diameter_mm = user_configuration->wheel_diameter_offset;	// 1mm start with this offset and then add the actual size later
+	}
+	if(user_configuration->bike_weight == 0xFFF){
+		// default;
+		bike_weight_kg = 10.0;			// from ant FEC doc. section 7.8.4.1 says
+	}else{
+		bike_weight_kg = user_configuration->bike_weight;		// 0.05kg
+		bike_weight_kg *= 0.05;			// convert to kg
+	}
+	if(user_configuration->wheel_diameter == 0xFF){
+		// defaut
+		wheel_diameter_mm += 700;		// 700mm
+	}else{
+		wheel_diameter_mm += (10 * user_configuration->wheel_diameter);		// 0.01m (extract and convert to mm)
+	}
 	wheel_circumference_mm = M_PI * wheel_diameter_mm;
 
 	//uint8_t		gear_ratio;
@@ -426,7 +475,7 @@ bool CANTMaster::process_user_configuration(user_configuration_t* user_configura
 	m_wheel_circumference_mm = wheel_circumference_mm;
 	m_user_config_state = USER_CONFIG_STATE_RX;
 	pthread_mutex_unlock(&m_vars_mutex);
-	printf("\nuser weight kg %f bike weight %f wheel circumference mm %f\n", user_weight_kg, bike_weight_kg, wheel_circumference_mm);
+	printf("\nSET: user weight kg %f bike weight %f wheel circumference mm %f\n", user_weight_kg, bike_weight_kg, wheel_circumference_mm);
 
 	return true;
 }
@@ -435,7 +484,6 @@ bool CANTMaster::process_request(request_t* request)
 	if(PAGE_REQUEST != request->data_page_number) {
 		return false;
 	}
-	printf("\n------page request !!! %d command_type %d\n", request->requested_page_number, request->command_type);
 	if(request->command_type != REQUEST_DATA_PAGE) {
 		printf("\nerror, we can only handle REQUEST_DATA_PAGE\n");
 		return false;
@@ -470,37 +518,46 @@ bool CANTMaster::process_request(request_t* request)
 	return true;
 }
 
-double CANTMaster::calc_power_required_watts(double velocity_kph, double grade_percent)
-{
-
+double CANTMaster::calc_power_required_watts(){
+	double speed_kph;
 	double weight_kg;
 
 	// semi constant
-	double rho = 1.226;
-	double cd = 0.63;
-	double area_m = 0.509;
-	double crr = 0.005;	// typical?
+	//double rho = 1.226;
+	//double cd = 0.63;
+	//double area_m = 0.509;
+	double wind_resistance_coef;	// was a multiple of above values which was 0.39. Ant requests a drag coef of .51 for default
+	double crr;			// ant wants default = 0.004.  I had default of 0.005;	
 
 	// leave these alone
 	double f_gravity;
 	double f_rolling;
-	double f_drag;				// TODO: get drag from the "wind_resistance page"
-	double grade = grade_percent/100;
-	double velocity_ms = (velocity_kph/3600)*1000;	// divide hours to seconds..and muliply km to meters
+	double f_drag;			
+	double slope;
+	double speed_ms;
 	double power_watts;
+	double drafting_factor;
 
 	// my user specs...get them
 	pthread_mutex_lock(&m_vars_mutex);
 	weight_kg = m_user_weight_kg + m_bike_weight_kg;
+	wind_resistance_coef = m_wind_resistance_coef;
+	crr = m_crr;
+	drafting_factor = m_drafting_factor;
+	speed_kph = m_speed_kph + m_wind_speed_kph;
+	slope = m_slope/100;				// slope is a percent...change it to a range  -1..1
 	pthread_mutex_unlock(&m_vars_mutex);
 
-	f_gravity = GRAVITY * sin(atan(grade)) * weight_kg;
+	f_gravity = GRAVITY * sin(atan(slope)) * weight_kg;
 
-	f_rolling = GRAVITY * cos(atan(grade)) * weight_kg * crr;
+	f_rolling = GRAVITY * cos(atan(slope)) * weight_kg * crr;
 
-	f_drag = 0.5 * cd * area_m * rho * velocity_ms * velocity_ms;
+	speed_ms = (speed_kph/3600)*1000;				// divide hours to seconds..and muliply km to meters
+	//f_drag = 0.5 * cd * area_m * rho * speed_ms * speed_ms;	// old formula
+	f_drag = 0.5 * wind_resistance_coef * (speed_ms * speed_ms);
+	f_drag *= drafting_factor;	// scales wind resistance from 0-100%
 
-	power_watts = (f_gravity + f_rolling + f_drag) * velocity_ms;
+	power_watts = (f_gravity + f_rolling + f_drag) * speed_ms;
 
 	return power_watts;
 }
@@ -543,17 +600,22 @@ CANTMaster::CANTMaster()
 	m_retry_count = 0;
 	m_fortius = NULL;
 	m_channel_number = USER_ANTCHANNEL;
+	m_device_id = DEVICE_ID;
 	m_slope = 0;
 	m_speed_kph = 0;
 	m_requested_mode = FT_ERGOMODE;
-	m_target_power_watts = 50;	// watts
 	pthread_mutex_init(&m_vars_mutex, NULL);
-
+	// set some defaults
+	m_target_power_watts = 50;	// watts
 	m_user_weight_kg = 93;	// 205 lbs
 	m_bike_weight_kg = 8.6;	// 19 lbs
 	m_wheel_circumference_mm = 2105;	// 700x25
 	m_user_config_state = USER_CONFIG_STATE_EMPTY;	// no data in user config
-	m_device_id = DEVICE_ID;
+
+	m_wind_resistance_coef = 0.51;// road  bike hoods 
+	m_wind_speed_kph = 0;	
+	m_drafting_factor = 1.0;
+
 }
 
 CANTMaster::~CANTMaster()
@@ -645,7 +707,7 @@ void* CANTMaster::mainloop(void)
 	double		heartrate_bpm;
 	double		cadence_rpm;
 	double		distance_meters;
-	double		slope_fraction;
+	double		slope;
 	double		power_required_watts;
 	int		buttons;
 	int		steering;
@@ -684,10 +746,10 @@ void* CANTMaster::mainloop(void)
 
 		// slope was sent in on track_resistance page
 		pthread_mutex_lock(&m_vars_mutex);
-		// get slope and requested load
-		slope_fraction = m_slope;
+		// get mode and requested load
 		target_power_watts = m_target_power_watts;
 		requested_mode = m_requested_mode;
+		slope = m_slope;
 		
 		// set everything else
 		m_power_produced_watts = power_produced_watts;
@@ -701,7 +763,7 @@ void* CANTMaster::mainloop(void)
 		if(requested_mode == FT_ERGOMODE){
 			power_required_watts = target_power_watts;
 		}else if(requested_mode == FT_SSMODE){
-			power_required_watts = calc_power_required_watts(m_speed_kph, slope_fraction);
+			power_required_watts = calc_power_required_watts();
 		}
 
 		m_fortius->setMode(FT_ERGOMODE);
@@ -713,7 +775,7 @@ void* CANTMaster::mainloop(void)
 			   cadence_rpm,
 			   m_speed_kph*0.62137100000000001,
 			   power_required_watts,
-			   slope_fraction,
+			   slope,
 			   m_requested_mode);
 
 		fflush(stdout);

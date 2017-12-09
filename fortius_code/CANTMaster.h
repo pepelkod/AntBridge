@@ -132,7 +132,7 @@ private:
 	static int8_t	response_callback(uint8_t channel_number, uint8_t message_id);
 	int8_t		response_handler(uint8_t channel_number, uint8_t message_id);
 	bool		fec_init(uint8_t message_id,uint8_t result);//called by response_callback
-	double		calc_power_required_watts(double velocity_kph, double grade);
+	double		calc_power_required_watts();
 
 	bool		send_request_page(uint8_t request_page);
 	bool		send_general_fe();
@@ -186,7 +186,7 @@ private:
 	double			m_target_power_watts;
 	// from wind_resistance page 50
 	double			m_wind_resistance_coef;
-	double			m_wind_speed;
+	double			m_wind_speed_kph;
 	double			m_drafting_factor;
 	// from track_resistance page 51
 	double			m_slope;
