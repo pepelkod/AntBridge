@@ -606,7 +606,7 @@ CANTMaster::CANTMaster()
 	m_requested_mode = FT_ERGOMODE;
 	pthread_mutex_init(&m_vars_mutex, NULL);
 	// set some defaults
-	m_target_power_watts = 50;	// watts
+	m_target_power_watts = 100;	// watts
 	m_user_weight_kg = 93;	// 205 lbs
 	m_bike_weight_kg = 8.6;	// 19 lbs
 	m_wheel_circumference_mm = 2105;	// 700x25

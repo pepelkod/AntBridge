@@ -52,7 +52,10 @@ const static uint8_t slope_command[12] = {
 	// 0     1     2     3     4     5     6     7    8      9     10    11
 	0x01, 0x08, 0x01, 0x00, 0x6c, 0x01, 0x00, 0x00, 0x02, 0x48, 0x10, 0x04
 };
-
+const static uint8_t calibrate_command[12] = {
+	// 0     1     2     3     4     5     6     7     8     9    10    11
+	0x01, 0x08, 0x01, 0x00, 0xa3, 0x16, 0x00, 0x00, 0x03, 0x52, 0x00, 0x00	// direct read from Fortius software usb capture
+};
 
 
 /* ----------------------------------------------------------------------
@@ -67,8 +70,10 @@ Fortius::Fortius()
 	gradient = DEFAULT_GRADIENT;
 	weight = DEFAULT_WEIGHT;
 	brakeCalibrationFactor = DEFAULT_CALIBRATION;
+	brakeCalibrationLoadRaw = DEFAULT_CALIBRATION_LOAD_RAW;			//	650  			// 0-1300 seems reasonable
 	powerScaleFactor = DEFAULT_SCALING;
 	deviceStatus = 0;
+
 
 	/* 12 byte control sequence, composed of 8 command packets
 	 * where the last packet sets the load. The first byte
@@ -78,6 +83,7 @@ Fortius::Fortius()
 	 */
 	memcpy(ERGO_Command, ergo_command, 12);
 	memcpy(SLOPE_Command, slope_command, 12);
+	memcpy(CALIBRATE_Command, calibrate_command, 12);
 
 	std::cout << "\nFortius::Fortius: new LibUsb\n";
 	// for interacting over the USB port
@@ -382,6 +388,62 @@ void* Fortius::run_helper(void* This)
 
 	return NULL;
 }
+
+void Fortius::hex_dump(uint8_t* data, int data_size)
+{
+        int cnt;
+	printf("\n");
+        for(cnt=0; cnt < data_size; cnt++) {
+                printf("%02x ", data[cnt]);
+                if(cnt%8==7) {
+                        printf(" ");
+                }
+		if(cnt%16==15){
+			printf("\n");
+		}
+        }
+}
+
+double Fortius::calculateWattageFromRaw(double powerRaw, double curDeviceSpeed){
+	double curBrakeCalibrationLoadRaw;
+	double slopeCalc;
+	double offsetCalc;
+	double powerCalcWatts;
+
+	pthread_mutex_lock(&pvars);
+	curBrakeCalibrationLoadRaw = brakeCalibrationLoadRaw;	// get member
+	pthread_mutex_unlock(&pvars);
+
+	slopeCalc = 0.001366 * curDeviceSpeed + 0.0308;
+	offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
+
+	printf("\n slope %f offset %f\n", slopeCalc, offsetCalc);
+	powerCalcWatts = slopeCalc * powerRaw + offsetCalc;
+
+	return powerCalcWatts;
+
+} 
+double Fortius::calculateRawLoadFromWattage(double requiredWatts){
+	double curBrakeCalibrationLoadRaw;
+	double slopeCalc;
+	double offsetCalc;
+	double powerRaw;
+	double curDeviceSpeed;
+
+	pthread_mutex_lock(&pvars);
+	curBrakeCalibrationLoadRaw = brakeCalibrationLoadRaw;	// get member
+	curDeviceSpeed = deviceSpeed;
+	pthread_mutex_unlock(&pvars);
+
+	slopeCalc = 0.001366 * curDeviceSpeed + 0.0308;
+	offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
+
+	powerRaw = (requiredWatts - offsetCalc)/slopeCalc;
+
+	return powerRaw;
+}
+	
+
 /*----------------------------------------------------------------------
  * THREADED CODE - READS TELEMETRY AND SENDS COMMANDS TO KEEP FORTIUS ALIVE
  *----------------------------------------------------------------------*/
@@ -407,6 +469,9 @@ void Fortius::run()
 	int curSteering;                    // Angle of steering controller
 	//int curStatus;
 	uint8_t pedalSensor;                // 1 when using is cycling else 0, fed back to brake although appears unnecessary
+	int16_t	rawPowerRead;			// read the raw power number from 48 byte message...THIS IS NOT WATTS? is it TORQUE?
+	double curCalibrationLoadRaw;
+	double nextCalibrationLoadRaw;
 
 	// we need to average out power for the last second
 	// since we get updates every 10ms (100hz)
@@ -445,20 +510,35 @@ void Fortius::run()
 	while(1) {
 		//printf("*");
 		if (isDeviceOpen == true) {
+			// do calibration mode
+			if((curButtons & (FT_PLUS | FT_MINUS)) == (FT_PLUS | FT_MINUS)){
+				mode = FT_CALIBRATE;
+			}
 			int rc = sendRunCommand(pedalSensor) ;
 			if (rc < 0) {
 				std::cout << "\nFortius::run: usb write error " << rc;
 				// send failed - ouch!
-				//closePort(); // need to release that file handle!!
-				//quit(4);
-				//return; // couldn't write to the device
+				closePort(); // need to release that file handle!!
+				if(openPort()){
+					std::cout << "\nFortius::run: failed attempt to close and reopen port";
+					quit(2);
+					return;
+				}
 				continue;	// ignore this error?
 			}
 			int actualLength = readMessage();
 			if (actualLength < 0) {
 				std::cout << "\nForitus::run: usb read error " << actualLength;
+				closePort(); // need to release that file handle!!
+				if(openPort()){
+					std::cout << "\nFortius::run: failed attempt to close and reopen port";
+					quit(2);
+					return;
+				}
+				continue;	// ignore this error?
 			}
-			if (actualLength >= 24) {
+			else {
+			    if (actualLength >= 24) {
 
 				//----------------------------------------------------------------
 				// UPDATE BASIC TELEMETRY (HR, CAD, SPD et al)
@@ -478,8 +558,8 @@ void Fortius::run()
 				deviceButtons |= curButtons;    // workaround to ensure controller doesn't miss button pushes
 				deviceSteering = curSteering;
 				pthread_mutex_unlock(&pvars);
-			}
-			if (actualLength == 48) {
+			  }
+			  if (actualLength == 48) {
 				//printf("+");
 				// brake status status&0x04 == stopping wheel
 				//              status&0x01 == brake on
@@ -509,11 +589,12 @@ void Fortius::run()
 
 				// power - changed scale from 10 to 13, seems correct in erg mode, slope mode needs work
 				//std::cout << "raw power " << buf[38];
-				curPower = FromLittleEndian<int16_t>((int16_t*)&buf[38]) / 13;
+			//		curPower = FromLittleEndian<int16_t>((int16_t*)&buf[38]) / 13;
+				rawPowerRead = FromLittleEndian<int16_t>((int16_t*)&buf[38]);
+				curPower = calculateWattageFromRaw(rawPowerRead, curSpeed);
 				if (curPower < 0.0) {
 					curPower = 0.0;    // brake power can be -ve when coasting.
 				}
-
 				// average power over last 1s
 				powertot += curPower;
 				powertot -= powerhist[powerindex];
@@ -521,7 +602,16 @@ void Fortius::run()
 
 				curPower = powertot / 10;
 				powerindex = (powerindex == 9) ? 0 : powerindex + 1;
-
+				
+				// if we are calibrating....average in calibration value
+				if(mode == FT_CALIBRATE){
+					// do an exponential moving average 
+					// on the raw power numbers from the machine
+					nextCalibrationLoadRaw = rawPowerRead;
+					nextCalibrationLoadRaw *= 0.1;
+					curCalibrationLoadRaw *= 0.9;
+					curCalibrationLoadRaw += nextCalibrationLoadRaw;
+				}
 				curPower *= powerScaleFactor; // apply scale factor
 
 				// heartrate - confirmed correct
@@ -535,12 +625,14 @@ void Fortius::run()
 				deviceCadence = curCadence;
 				deviceHeartRate = curHeartRate;
 				devicePower = curPower;
+				brakeCalibrationLoadRaw = curCalibrationLoadRaw;
 				pthread_mutex_unlock(&pvars);
 
 
-			}
-			if(actualLength != 24 && actualLength != 48) {
-				printf("\nFortius::run: error, got a length of %d --------------------------------------------------------------------\n", actualLength);
+			    }
+			    if(actualLength != 24 && actualLength != 48) {
+				printf("\nFortius::run: error, got a length of %d ----------------------------------------\n", actualLength);
+			    }
 			}
 		}
 
@@ -625,7 +717,9 @@ int Fortius::sendRunCommand(int16_t pedalSensor)
 
 	if (mode == FT_ERGOMODE) {
 		//std::cout << "send load " << load;
-		ToLittleEndian<int16_t>(13 * load, (int16_t*)&ERGO_Command[4]);
+
+		//ToLittleEndian<int16_t>(13 * load, (int16_t*)&ERGO_Command[4]);
+		ToLittleEndian<int16_t>(calculateRawLoadFromWattage(load), (int16_t*)&ERGO_Command[4]);
 		ERGO_Command[6] = pedalSensor;
 
 		ToLittleEndian<int16_t>(130 * brakeCalibrationFactor + 1040, (int16_t*)&ERGO_Command[10]);
@@ -648,6 +742,8 @@ int Fortius::sendRunCommand(int16_t pedalSensor)
 		// Not yet implemented, easy enough to start calibration but appears that the calibration factor needs
 		// to be calculated by observing the brake power and speed after calibration starts (i.e. it's not returned
 		// by the brake).
+		printf("calibrating\n");
+		retCode = rawWrite(CALIBRATE_Command, 12);	
 	}
 
 	//std::cout << "usb status " << retCode;

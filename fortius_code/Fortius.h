@@ -75,8 +75,10 @@
 #define DEFAULT_LOAD         100.00
 #define DEFAULT_GRADIENT     2.00
 #define DEFAULT_WEIGHT       77
-#define DEFAULT_CALIBRATION  0.00
+#define DEFAULT_CALIBRATION  0	
 #define DEFAULT_SCALING      1.00
+
+#define DEFAULT_CALIBRATION_LOAD_RAW	650  			// 0-1300 seems reasonable
 
 #define HALF_ROLLER_CIRCUMFERENCE_M 0.06264880952	// distance given is number of 
 
@@ -97,6 +99,9 @@ public:
 	int stop();                                 // stops data collection thread
 	int quit(int error);                        // called by thread before exiting
 	int join();				    // wait on thread
+	void hex_dump(uint8_t* data, int data_size);// debug
+	double calculateWattageFromRaw(double powerRaw, double speedKph);	// convert raw power number into a wattage. depends on speed
+	double calculateRawLoadFromWattage(double requiredWatts); // figures out what raw load numbers to put in for a desired wattage load in erg mode
 	void run();                                 // called by start to kick off the CT control thread
 	static void* run_helper(void* This);	    // static version that calls run so pthread can call it
 
@@ -132,7 +137,8 @@ private:
 
 
 	uint8_t ERGO_Command[12],
-			SLOPE_Command[12];
+		SLOPE_Command[12],
+		CALIBRATE_Command[12];
 
 	// Utility and BG Thread functions
 	int openPort();
@@ -163,6 +169,7 @@ private:
 	volatile double load;
 	volatile double gradient;
 	volatile double brakeCalibrationFactor;
+	volatile double brakeCalibrationLoadRaw;
 	volatile double powerScaleFactor;
 	volatile double weight;
 
