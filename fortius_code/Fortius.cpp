@@ -104,7 +104,9 @@ Fortius::~Fortius()
 void Fortius::setMode(int mode)
 {
 	pthread_mutex_lock(&pvars);
-	this->mode = mode;
+	if(this->mode != FT_CALIBRATE){
+		this->mode = mode;
+	}
 	pthread_mutex_unlock(&pvars);
 }
 
@@ -372,6 +374,7 @@ int Fortius::quit(int code)
 	pthread_mutex_lock(&pvars);
 	this->deviceStatus = FT_ERROR;
 	pthread_mutex_unlock(&pvars);
+	printf("exit code %d\n", code);
 
 	// event code goes here!
 	//exit(code);
@@ -459,6 +462,7 @@ void Fortius::run()
 
 	// variables for telemetry, copied to fields on each brake update
 	double curPower;                      // current output power in Watts
+	double nextPower;                     // used for exponential moving average of power
 	double curHeartRate;                  // current heartrate in BPM
 	double curCadence;                    // current cadence in RPM
 	double curSpeed;                      // current speed in KPH
@@ -472,15 +476,8 @@ void Fortius::run()
 	int16_t	rawPowerRead;			// read the raw power number from 48 byte message...THIS IS NOT WATTS? is it TORQUE?
 	double curCalibrationLoadRaw;
 	double nextCalibrationLoadRaw;
-
-	// we need to average out power for the last second
-	// since we get updates every 10ms (100hz)
-	int powerhist[10];     // last 10 values received
-	int powertot = 0;      // running total
-	int powerindex = 0;    // index into the powerhist array
-	for (int i = 0; i < 10; i++) {
-		powerhist[i] = 0;
-	}
+	double tempLoadWatts;
+	int	calibrateCount;
 
 	// initialise local cache & main vars
 	pthread_mutex_lock(&pvars);
@@ -513,6 +510,15 @@ void Fortius::run()
 			// do calibration mode
 			if((curButtons & (FT_PLUS | FT_MINUS)) == (FT_PLUS | FT_MINUS)){
 				mode = FT_CALIBRATE;
+				calibrateCount = 400;
+			}else if((curButtons & FT_PLUS) == FT_PLUS){
+				tempLoadWatts = getLoad();
+				tempLoadWatts+=10;		// add 10 watts
+				setLoad(tempLoadWatts);	
+			}else if((curButtons & FT_MINUS) == FT_MINUS){
+				tempLoadWatts = getLoad();
+				tempLoadWatts-=10;		// -10 watts
+				setLoad(tempLoadWatts);
 			}
 			int rc = sendRunCommand(pedalSensor) ;
 			if (rc < 0) {
@@ -573,55 +579,48 @@ void Fortius::run()
 				if(startDistanceDoubleRevs == 0 || startDistanceDoubleRevs == 4100){
 					startDistanceDoubleRevs = curDistance;
 				}
-				//printf("revs = %f\n", curDistance);
-				//curDistance = curDistance * 0.063403614457831;
 				curDistance = ((double)curDistanceDoubleRevs) * HALF_ROLLER_CIRCUMFERENCE_M ;	//0.06264880952;
-				//curDistance = (buf[28] | (buf[29] << 8) | (buf[30] << 16) | (buf[31] << 24))/8.076009501187648;
-				//printf("curDistance meters %f\n", curDistance);
 
 				// cadence - confirmed correct
-				//std::cout << "raw cadence " << buf[44];
 				curCadence = buf[44];
 
 				// speed
-				//std::cout << "raw speed " << buf[32];
 				curSpeed = 1.3f * (double)(FromLittleEndian<uint16_t>((uint16_t*)&buf[32])) / (3.6f * 100.00f);
 
-				// power - changed scale from 10 to 13, seems correct in erg mode, slope mode needs work
-				//std::cout << "raw power " << buf[38];
-			//		curPower = FromLittleEndian<int16_t>((int16_t*)&buf[38]) / 13;
+				// power 
 				rawPowerRead = FromLittleEndian<int16_t>((int16_t*)&buf[38]);
-				curPower = calculateWattageFromRaw(rawPowerRead, curSpeed);
-				if (curPower < 0.0) {
-					curPower = 0.0;    // brake power can be -ve when coasting.
+				nextPower = calculateWattageFromRaw(rawPowerRead, curSpeed);
+				if (nextPower < 0.0) {
+					nextPower = 0.0;    // brake power can be -ve when coasting.
 				}
-				// average power over last 1s
-				powertot += curPower;
-				powertot -= powerhist[powerindex];
-				powerhist[powerindex] = curPower;
-
-				curPower = powertot / 10;
-				powerindex = (powerindex == 9) ? 0 : powerindex + 1;
+				
+				// EMA power
+				nextPower *= 0.25;
+				curPower *= 0.75;
+				curPower += nextPower;
 				
 				// if we are calibrating....average in calibration value
 				if(mode == FT_CALIBRATE){
 					// do an exponential moving average 
 					// on the raw power numbers from the machine
 					nextCalibrationLoadRaw = rawPowerRead;
-					nextCalibrationLoadRaw *= 0.1;
-					curCalibrationLoadRaw *= 0.9;
+					nextCalibrationLoadRaw *= 0.25;
+					curCalibrationLoadRaw *= 0.75;
 					curCalibrationLoadRaw += nextCalibrationLoadRaw;
+					if(0 >= calibrateCount--){
+						mode = FT_ERGOMODE;
+					}
+					
 				}
 				curPower *= powerScaleFactor; // apply scale factor
 
 				// heartrate - confirmed correct
-				//std::cout << "raw heartrate " << buf[12];
 				curHeartRate = buf[12];
 
 				// update public fields
 				pthread_mutex_lock(&pvars);
 				deviceSpeed = curSpeed;
-				deviceDistance = curDistance;// - (startDistanceDoubleRevs * HALF_ROLLER_CIRCUMFERENCE_M);
+				deviceDistance = curDistance;
 				deviceCadence = curCadence;
 				deviceHeartRate = curHeartRate;
 				devicePower = curPower;
@@ -673,7 +672,7 @@ void Fortius::run()
 
 		// The controller updates faster than the brake. Setting this to a low value (<50ms) increases the frequency of controller
 		// only packages (24byte).
-		//usleep(10000);	// 10ms
+		usleep(10000);	// 10ms
 	}
 }
 
@@ -742,7 +741,6 @@ int Fortius::sendRunCommand(int16_t pedalSensor)
 		// Not yet implemented, easy enough to start calibration but appears that the calibration factor needs
 		// to be calculated by observing the brake power and speed after calibration starts (i.e. it's not returned
 		// by the brake).
-		printf("calibrating\n");
 		retCode = rawWrite(CALIBRATE_Command, 12);	
 	}
 
