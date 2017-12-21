@@ -117,6 +117,7 @@ public:
 	void setPowerScaleFactor(double calibrationFactor);         // Scales output power, so user can adjust to match hub or crank power meter
 	void setMode(int mode);
 	void setWeight(double weight);                 // set the total weight of rider + bike in kg's
+	void setBrakeCalibrationLoadRaw(double load);
 
 	int getMode();
 	double getGradient();
@@ -125,6 +126,7 @@ public:
 	double getBrakeCalibrationFactor();
 	double getPowerScaleFactor();
 	double getWeight();
+	double getBrakeCalibrationLoadRaw();
 
 	// GET TELEMETRY AND STATUS
 	// direct access to class variables is not allowed because we need to use wait conditions

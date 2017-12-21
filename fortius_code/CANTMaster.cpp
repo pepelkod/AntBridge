@@ -713,6 +713,8 @@ void* CANTMaster::mainloop(void)
 	int		steering;
 	int		status;
 	timespec	start_time;
+	int		calibrate_count;
+	
 
 
 	m_channel_open = FALSE;
@@ -760,15 +762,59 @@ void* CANTMaster::mainloop(void)
 		m_buttons = buttons;
 		pthread_mutex_unlock(&m_vars_mutex);
 
-		if(requested_mode == FT_ERGOMODE){
-			power_required_watts = target_power_watts;
-		}else if(requested_mode == FT_SSMODE){
-			power_required_watts = calc_power_required_watts();
+		// read buttons and adjust things as needed
+		if((buttons & (FT_PLUS | FT_MINUS)) == (FT_PLUS | FT_MINUS)){
+			requested_mode = FT_CALIBRATE;
+
+			pthread_mutex_lock(&m_vars_mutex);
+			m_requested_mode = requested_mode;
+			pthread_mutex_unlock(&m_vars_mutex);
+			calibrate_count = 40;
+		}else if((buttons & FT_PLUS) == FT_PLUS){
+			target_power_watts+=10;		// add 10 watts
+			printf("\nnew load %fwatts\n", target_power_watts);
+			pthread_mutex_lock(&m_vars_mutex);
+			m_target_power_watts = target_power_watts;
+			pthread_mutex_unlock(&m_vars_mutex);
+	
+		}else if((buttons & FT_MINUS) == FT_MINUS){
+			target_power_watts-=10;		// -10 watts
+			printf("\nnew load %fwatts\n", target_power_watts);
+			pthread_mutex_lock(&m_vars_mutex);
+			m_target_power_watts = target_power_watts;
+			pthread_mutex_unlock(&m_vars_mutex);
 		}
 
-		m_fortius->setMode(FT_ERGOMODE);
-		m_fortius->setLoad(power_required_watts);
+		// figure out which mode we are in and do something
+		if(requested_mode == FT_ERGOMODE){
+			power_required_watts = target_power_watts;
+			m_fortius->setMode(FT_ERGOMODE);
+			m_fortius->setLoad(power_required_watts);
+		}else if(requested_mode == FT_SSMODE){
+			power_required_watts = calc_power_required_watts();
+			m_fortius->setMode(FT_ERGOMODE);
+			m_fortius->setLoad(power_required_watts);
+		}else if(requested_mode == FT_CALIBRATE){
+			m_fortius->setMode(FT_CALIBRATE);
+			// if we are calibrating....average in calibration value
+			// do an exponential moving average 
+			// on the raw power numbers from the machine
+			if(0 >= calibrate_count--){
+				requested_mode = FT_ERGOMODE;
+				pthread_mutex_lock(&m_vars_mutex);
+				m_requested_mode = requested_mode;
+				pthread_mutex_unlock(&m_vars_mutex);
+				printf("\n final calibration value %f\n", m_fortius->getBrakeCalibrationLoadRaw());
+			}
+			printf("\n %d calibration value %f\n",calibrate_count, m_fortius->getBrakeCalibrationLoadRaw());
+		}else{
+			printf("\n error! unknown mode %d\n", requested_mode);
+			requested_mode = FT_ERGOMODE;
 
+			pthread_mutex_lock(&m_vars_mutex);
+			m_requested_mode = requested_mode;
+			pthread_mutex_unlock(&m_vars_mutex);
+		}
 
 		printf("\rpower mk %fw, cadence %f, speed %fmph, power nd %fw slp %f md %d",
 			   power_produced_watts,
@@ -776,7 +822,7 @@ void* CANTMaster::mainloop(void)
 			   m_speed_kph*0.62137100000000001,
 			   power_required_watts,
 			   slope,
-			   m_requested_mode);
+			   requested_mode);
 
 		fflush(stdout);
 
