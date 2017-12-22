@@ -816,13 +816,13 @@ void* CANTMaster::mainloop(void)
 			pthread_mutex_unlock(&m_vars_mutex);
 		}
 
-		printf("\rpower mk %fw, cadence %f, speed %fmph, power nd %fw slp %f md %d",
+		printf("\rpower mk %fw, cadence %f, speed %fmph, power nd %fw power raw %f speed raw %f",
 			   power_produced_watts,
 			   cadence_rpm,
 			   m_speed_kph*0.62137100000000001,
 			   power_required_watts,
-			   slope,
-			   requested_mode);
+			   m_fortius->rawPower,
+			   m_fortius->rawSpeed);
 
 		fflush(stdout);
 

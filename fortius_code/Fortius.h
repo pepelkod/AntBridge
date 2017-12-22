@@ -184,6 +184,10 @@ private:
 	// raw device utils
 	int rawWrite(uint8_t* bytes, int size); // unix!!
 	int rawRead(uint8_t* bytes, int size); // unix!!
+
+public:
+	volatile double rawPower;
+	volatile double rawSpeed;
 };
 
 #endif // _GC_Fortius_h

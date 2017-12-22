@@ -423,7 +423,7 @@ void Fortius::hex_dump(uint8_t* data, int data_size)
         }
 }
 
-double Fortius::calculateWattageFromRaw(double powerRaw, double curDeviceSpeed){
+double Fortius::calculateWattageFromRaw(double curRawPower, double curRawSpeed){
 	double curBrakeCalibrationLoadRaw;
 	double slopeCalc;
 	double offsetCalc;
@@ -434,11 +434,14 @@ double Fortius::calculateWattageFromRaw(double powerRaw, double curDeviceSpeed){
 	pthread_mutex_unlock(&pvars);
 
 	// old slopeCalc = 0.001366 * curDeviceSpeed + 0.0308;
-	slopeCalc = 0.191 * curDeviceSpeed + 0.076;
-	offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
+	// newer slopeCalc = 0.191 * curDeviceSpeed + 0.076;
+	slopeCalc = 0.00000670 * (curRawSpeed) + 0.002;
+	
+	//offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
+	offsetCalc = 0;
 
 	//printf("\n slope %f offset %f\n", slopeCalc, offsetCalc);
-	powerCalcWatts = slopeCalc * powerRaw + offsetCalc;
+	powerCalcWatts = (slopeCalc * curRawPower) + offsetCalc;
 
 	return powerCalcWatts;
 
@@ -448,19 +451,26 @@ double Fortius::calculateRawLoadFromWattage(double requiredWatts){
 	double slopeCalc;
 	double offsetCalc;
 	double powerRaw;
-	double curDeviceSpeed;
+	double curRawSpeed;
 
 	pthread_mutex_lock(&pvars);
 	curBrakeCalibrationLoadRaw = brakeCalibrationLoadRaw;	// get member
-	curDeviceSpeed = deviceSpeed;
+	curRawSpeed = rawSpeed;
 	pthread_mutex_unlock(&pvars);
 
 	// oldslopeCalc = 0.001366 * curDeviceSpeed + 0.0308;
-	slopeCalc = 0.191 * curDeviceSpeed + 0.076;
-	offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
+	// newer slopeCalc = 0.191 * curDeviceSpeed + 0.076;
+	if(curRawSpeed==0){
+		curRawSpeed=2200;	// minimum 5 mph
+	}
+	slopeCalc = 0.00000670 * (curRawSpeed) + 0.002;
 
-	powerRaw = (requiredWatts - offsetCalc)/slopeCalc;
+	//offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
+	offsetCalc = 0;	// debug
 
+	powerRaw = ((requiredWatts - offsetCalc)/slopeCalc);
+
+	//printf("\n pwer raw %f slope calc %f offsetCalc %f required watts %f\n", powerRaw, slopeCalc, offsetCalc, requiredWatts);
 	return powerRaw;
 }
 	
@@ -491,9 +501,10 @@ void Fortius::run()
 	int curSteering;                    // Angle of steering controller
 	//int curStatus;
 	uint8_t pedalSensor;                // 1 when using is cycling else 0, fed back to brake although appears unnecessary
-	int16_t	rawPowerRead;			// read the raw power number from 48 byte message...THIS IS NOT WATTS? is it TORQUE?
 	double next_calibration_load_raw;
 	double cur_calibration_load_raw;
+	double curRawSpeed;
+	double curRawPower;			// read the raw power number from 48 byte message...THIS IS NOT WATTS? is it TORQUE?
 
 	// initialise local cache & main vars
 	pthread_mutex_lock(&pvars);
@@ -589,12 +600,13 @@ void Fortius::run()
 				curCadence = buf[44];
 
 				// speed
-				curSpeed = 1.3f * (double)(FromLittleEndian<uint16_t>((uint16_t*)&buf[32])) / (3.6f * 100.00f);
+				curRawSpeed =  (double)(FromLittleEndian<uint16_t>((uint16_t*)&buf[32]));
+				curSpeed = 1.3f * curRawSpeed / (3.6f * 100.00f);
 
 				// power 
-				rawPowerRead = FromLittleEndian<int16_t>((int16_t*)&buf[38]);
+				curRawPower = FromLittleEndian<int16_t>((int16_t*)&buf[38]);
 				if(FT_CALIBRATE == mode){
-					next_calibration_load_raw = rawPowerRead;
+					next_calibration_load_raw = curRawPower;
 					next_calibration_load_raw *= 0.9;
 					cur_calibration_load_raw = getBrakeCalibrationLoadRaw();
 					cur_calibration_load_raw *= 0.1;
@@ -602,10 +614,9 @@ void Fortius::run()
 					setBrakeCalibrationLoadRaw(cur_calibration_load_raw);
 				}
 
-				//nextPower = calculateWattageFromRaw(rawPowerRead, curSpeed);
-				nextPower = rawPowerRead;	// debug so we can see the power values
+				nextPower = calculateWattageFromRaw(curRawPower, curRawSpeed);
 				if (nextPower < 0.0) {
-				//	nextPower = 0.0;    // brake power can be -ve when coasting.
+					nextPower = 0.0;    // brake power can be -ve when coasting.
 				}
 				
 				// EMA power
@@ -625,6 +636,9 @@ void Fortius::run()
 				deviceCadence = curCadence;
 				deviceHeartRate = curHeartRate;
 				devicePower = curPower;
+
+				rawPower = curRawPower;
+				rawSpeed = curRawSpeed;
 				pthread_mutex_unlock(&pvars);
 
 
