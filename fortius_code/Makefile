@@ -1,6 +1,6 @@
 #### PROJECT SETTINGS ####
 # The name of the executable to be created
-BIN_NAME := bridge_tool 
+BIN_NAME := fortius_ant_bridge
 # Compiler used
 CXX ?= g++
 # Extension of source files used in the project

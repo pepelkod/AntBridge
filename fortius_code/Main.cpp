@@ -38,26 +38,38 @@ typedef struct fortius_telemetry_s {
 	int status;
 } fortius_telemetry_t;
 
+#define PIDFILE "/var/run/%s.pid"
+
 int main(int argc, char* argv[])
 {
 	Fortius*		fortius=NULL;
 	fortius_telemetry_t	fortius_telemetry;
+	char			pid_file_path[100];
+	FILE*			pid_fd;
 
 	// catch ctrl-c
 	signal(SIGINT, ctrlc_handler);
 
+	// setup pidfile
+	snprintf(pid_file_path, sizeof(pid_file_path), PIDFILE, argv[0]);
+	pid_fd = fopen(pid_file_path, "wb");
+	if(!pid_fd){
+		printf("Failed to create pid file. Please run as SU.\n");
+		return -1;
+	}
+
 	fortius = new Fortius();
 	if(fortius) {
-		printf("Hello Fortius.\n");
+		printf("Fortius initialized.\n");
 	} else {
-		printf("Failed to create Fortius.\n");
+		printf("Failed to create Fortius connection.\n");
 		goto exit_main;
 	}
 	ant_master = new CANTMaster();
 	if(ant_master) {
-		printf("Hello ANT Dongle.\n");
+		printf("ANT dongle initialized.\n");
 		if(false == ant_master->init(fortius)) {
-			printf("Failed to init ant\n");
+			printf("Failed to init ANT+ dongle\n");
 			goto exit_main;
 		}
 	} else {

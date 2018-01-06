@@ -9,8 +9,6 @@ sudo apt-get install libusb-dev
 sudo apt-get install libgoogle-glog-dev
 sudo apt-get install libusb-1.0-0-dev
 
-cd ant_code
-make;make;		// for some reason the first time thru, the archiver gets permission denied...make twice cause I'm too lazy to fix it.
 
-cd ../fortius_code
-make
+make; make;		# still having problems with libanty.a not getting permission to build the first time.
+sudo make install	# installs to /usr/local/lib and /usr/local/bin

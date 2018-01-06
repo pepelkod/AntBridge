@@ -30,7 +30,8 @@
 #endif
 #include "LibUsb.h"
 
-#define FORTIUS_FIRMWARE                "../firmware/HexComponent/FortiusSWPID1942Renum.hex"
+#define FORTIUS_FIRMWARE_LOCAL                "../firmware/HexComponent/FortiusSWPID1942Renum.hex"
+#define FORTIUS_FIRMWARE_SYSTEM                "/usr/local/firmware/HexComponent/FortiusSWPID1942Renum.hex"
 #define WINDOWS 1
 #define LINUX   2
 #define OSX     3
@@ -386,7 +387,12 @@ struct usb_dev_handle* LibUsb::OpenFortius()
 
 					// LOAD THE FIRMWARE
 					//ezusb_load_ram (udev, appsettings->value(NULL, FORTIUS_FIRMWARE, "").toString().toLatin1(), 0, 0);
-					ezusb_load_ram (udev, FORTIUS_FIRMWARE, 0, 0);
+					if(0!=ezusb_load_ram (udev, FORTIUS_FIRMWARE_LOCAL, 0, 0)){
+						if(0!=ezusb_load_ram (udev, FORTIUS_FIRMWARE_SYSTEM, 0, 0)){
+							printf("failed to open both %s and %s.  Please provide firmware from your Tacx install directory or your Tacx Disc data2.cab file.\n", FORTIUS_FIRMWARE_LOCAL, FORTIUS_FIRMWARE_SYSTEM);
+							return NULL;
+						}
+					}
 				}
 
 				// Now close the connection, our work here is done

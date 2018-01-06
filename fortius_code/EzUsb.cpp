@@ -681,7 +681,7 @@ int ezusb_load_eeprom (usb_dev_handle *dev, const char *path, const char *type, 
 
 	image = fopen (path, "r");
 	if (image == 0) {
-		printf("%s: unable to open for input.\n", path);
+		//printf("%s: unable to open for input.\n", path);
 		return -2;
 	} else if (verbose) {
 		printf("open EEPROM hexfile image %s\n", path);
