@@ -21,6 +21,7 @@
 #include "ant.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 #include <unistd.h>
 #include <pthread.h>
 #include <glog/logging.h>
@@ -136,7 +137,8 @@ bool CANTMaster::send_request_page(uint8_t request_page)
 	request.requested_page_number = request_page;	// user configuration data 55
 	request.command_type = 3;		// data page from slave
 
-	printf("\nsend request page\n");
+	//printf("\nsend request page\n");
+	VLOG (1) << "SEND Request Page";
 	hex_dump((uint8_t*)&request, sizeof(request));
 
 	return send( (uint8_t*)&request);
@@ -155,7 +157,7 @@ bool CANTMaster::send_general_fe()
 	heartrate_bpm = m_heartrate_bpm;
 	speed_kph = m_speed_kph;
 	distance_meters = m_distance_meters;
-	pthread_mutex_unlock(&m_vars_mutex);	
+	pthread_mutex_unlock(&m_vars_mutex);
 
 	clock_gettime(CLOCK_MONOTONIC, &current_time);
 	uint32_t current_seconds = to_seconds(&current_time);
@@ -165,7 +167,7 @@ bool CANTMaster::send_general_fe()
 	general_fe.equipment_type_bitfield = 25; // 0x19 trainer
 	general_fe.accumulated_time_quarter_seconds = elapsed_time_seconds * 4;
 	general_fe.accumulated_distance = distance_meters;
-	
+
 	//printf("\nkph %f\n", speed_kph);
 	double speed_kps = speed_kph/3600;			// convert kph to kps (60 minutes * 60 seconds)
 	//printf("\nkps %f\n", speed_kps);
@@ -176,11 +178,13 @@ bool CANTMaster::send_general_fe()
 	general_fe.speed = speed_mmps;			// speed millimeters per second
 	general_fe.heart_rate = heartrate_bpm;
 	general_fe.capabilities = 4;			// Distance traveled enabled
+	general_fe.capabilities |= 2;			// HRM from Tacx
 	general_fe.state = 0x3;				// in use; and lap toggle
 
 	//printf("\ngeneral_fe\n");
 	//hex_dump((uint8_t*)&general_fe, sizeof(general_fe));
 	//printf("\n");
+	VLOG (1) << "SEND General FE (0x10/16)";
 
 	return send( (uint8_t*)&general_fe);
 }
@@ -206,6 +210,7 @@ bool CANTMaster::send_general_settings()
 	//printf("\ngeneral settings\n");
 	//hex_dump((uint8_t*)&general_settings, sizeof(general_settings));
 	//printf("\n");
+	VLOG (1) << "SEND General Settings";
 
 	return send( (uint8_t*)&general_settings);
 }
@@ -235,14 +240,16 @@ bool CANTMaster::send_specific_trainer()
 	specific_trainer.flags = 0;		// trainer operating at target power..
 	specific_trainer.fe_state = FE_STATE_IN_USE;
 
+	VLOG (1) << "SEND Specific Trainer";
+
 	if(USER_CONFIG_STATE_EMPTY == m_user_config_state) { // no data in user config
 		//printf("\nrequesting user config\n");
 		// request it
+		VLOG (1) << "Request user config";
 		specific_trainer.trainer_status = 4;	// request user config
 	}
 	//printf("\nspecific_trainer accum watts 0x%x inst watts 0x%x\n", accumulated_power_watts, power_produced_watts);
 	//hex_dump((uint8_t*)&specific_trainer, sizeof(specific_trainer));
-
 
 	return send( (uint8_t*)&specific_trainer);
 }
@@ -259,6 +266,7 @@ bool CANTMaster::send_fe_capabilities()
 	//printf("\nfe_capabilites\n:");
 	//hex_dump((uint8_t*)&fe_capabilities, sizeof(fe_capabilities));
 	//printf("\n");
+	VLOG (1) << "SEND FE Capabilities";
 
 	return send( (uint8_t*)&fe_capabilities);
 }
@@ -275,6 +283,8 @@ bool CANTMaster::send_manufacturer_information()
 	//printf("\nmanufacturer_information\n");
 	//hex_dump((uint8_t*)&manufacturer_information, sizeof(manufacturer_information));
 	//printf("\n");
+	VLOG (1) << "SEND Manufacturer Information";
+
 	return send( (uint8_t*)&manufacturer_information);
 }
 bool CANTMaster::send_product_information()
@@ -289,6 +299,8 @@ bool CANTMaster::send_product_information()
 	//printf("\nproduct_information\n");
 	//hex_dump((uint8_t*)&product_information, sizeof(product_information));
 	//printf("\n");
+	VLOG (1) << "SEND Product Information";
+
 	return send( (uint8_t*)&product_information);
 }
 
@@ -301,6 +313,8 @@ bool CANTMaster::send_command_status(){
 	command_status.sequence_number = m_sequence_number;
 	command_status.command_status = m_command_status;
 	memset(command_status.data, 0xFF, sizeof(command_status.data));
+
+	VLOG (1) << "SEND Command Status";
 
 	return send( (uint8_t*)&command_status);
 }
@@ -319,6 +333,8 @@ bool CANTMaster::process_basic_resistance(basic_resistance_t*	basic_resistance)
 	target_resistance_percentage /= 2;		// resistance comes in 0.5% increments so div by 2
 	target_power_watts = 1000 * (target_resistance_percentage/100);
 
+	VLOG (1) << "SET: Resistance based load: target_power_watts " << target_power_watts;
+
 	m_fortius->setLoad(target_power_watts);
 
 	return true;
@@ -334,14 +350,14 @@ bool CANTMaster::process_target_power(target_power_t*	target_power)
 	target_power_watts = target_power->target_power_quarter_watts;	// the message comes in 1/4 watt increments
 	target_power_watts /= 4;					// so wait until it is in the double and div by 4
 
-	
+
 	pthread_mutex_lock(&m_vars_mutex);
 	m_target_power_watts = target_power_watts;
 	m_requested_mode = FT_ERGOMODE;
 	pthread_mutex_unlock(&m_vars_mutex);
 
-	printf("\nSET: target_power_watts %f\n", target_power_watts);
-
+	//printf("\nSET: target_power_watts %f\n", target_power_watts);
+	VLOG (1) << "SET: Target power based load: target_power_watts " << target_power_watts;
 	return true;
 
 }
@@ -381,7 +397,8 @@ bool CANTMaster::process_wind_resistance(wind_resistance_t* wind_resistance)
 	m_wind_speed_kph = wind_speed_kph;
 	m_drafting_factor = drafting_factor;
 	pthread_mutex_unlock(&m_vars_mutex);
-	printf("\nSET: wind resistance coef %f wind speed %f drafting factor %f\n", wind_resistance_coef, wind_speed_kph, drafting_factor);
+//	printf("\nSET: wind resistance coef %f wind speed %f drafting factor %f\n", wind_resistance_coef, wind_speed_kph, drafting_factor);
+	VLOG (1) << "SET: wind res coef " << wind_resistance_coef << ", wind speed " << wind_speed_kph << ", draft fact " << drafting_factor;
 	return true;
 }
 
@@ -420,7 +437,8 @@ bool CANTMaster::process_track_resistance(track_resistance_t* track_resistance)
 	m_fortius->setMode(FT_SSMODE);
 	m_fortius->setGradient(slope_double/100);
 	*/
-	printf("\nSET: slope %f crr %f\n", slope, crr);
+//	printf("\nSET: slope %f crr %f\n", slope, crr);
+	VLOG (1) << "SET: slope " << slope << ", crr " << crr;
 	return true;
 }
 
@@ -464,9 +482,9 @@ bool CANTMaster::process_user_configuration(user_configuration_t* user_configura
 
 	//uint8_t		gear_ratio;
 
-	
+
 	if( (user_weight_kg <= 0) || (user_weight_kg > 300) || (bike_weight_kg <= 0) || (bike_weight_kg >=100)){
-		printf("\ninvalid settings: user weight kg %f bike weight %f wheel circumference mm %f\n", user_weight_kg, bike_weight_kg, wheel_circumference_mm);
+		std::cout << "Invalid settings" << std::endl;
 		return false;
 	}
 	pthread_mutex_lock(&m_vars_mutex);
@@ -475,8 +493,8 @@ bool CANTMaster::process_user_configuration(user_configuration_t* user_configura
 	m_wheel_circumference_mm = wheel_circumference_mm;
 	m_user_config_state = USER_CONFIG_STATE_RX;
 	pthread_mutex_unlock(&m_vars_mutex);
-	printf("\nSET: user weight kg %f bike weight %f wheel circumference mm %f\n", user_weight_kg, bike_weight_kg, wheel_circumference_mm);
-
+	// printf("\nSET: user weight kg %f bike weight %f wheel circumference mm %f\n", user_weight_kg, bike_weight_kg, wheel_circumference_mm);
+	VLOG (1) << "SET: user weight " << user_weight_kg << " [kg], bike weight " << bike_weight_kg << " [kg], wheel circ " << wheel_circumference_mm << " [mm]";
 	return true;
 }
 bool CANTMaster::process_request(request_t* request)
@@ -485,34 +503,41 @@ bool CANTMaster::process_request(request_t* request)
 		return false;
 	}
 	if(request->command_type != REQUEST_DATA_PAGE) {
-		printf("\nerror, we can only handle REQUEST_DATA_PAGE\n");
+		std::cout << "Error, we can only handle REQUEST_DATA_PAGE" << std::endl;
 		return false;
 	}
 	switch(request->requested_page_number) {
 
 	case(PAGE_GENERAL_FE):
+		VLOG (1) << "PAGE_GENERAL_FE " << PAGE_GENERAL_FE;
 		return send_general_fe();
 		break;
 	case(PAGE_GENERAL_SETTINGS):
+		VLOG (1) << "PAGE_GENERAL_SETTINGS " << PAGE_GENERAL_SETTINGS;
 		return send_general_settings();
 		break;
 	case(PAGE_SPECIFIC_TRAINER):
+		VLOG (1) << "PAGE_SPECIFIC_TRAINER " << PAGE_SPECIFIC_TRAINER;
 		return send_specific_trainer();
 		break;
 	case(PAGE_FE_CAPABILITIES):
+		VLOG (1) << "PAGE_FE_CAPABILITIES " << PAGE_FE_CAPABILITIES;
 		return send_fe_capabilities();
 		break;
 	case(PAGE_MANUFACTURER_INFORMATION):
+		VLOG (1) << "PAGE_MANUFACTURER_INFORMATION " << PAGE_MANUFACTURER_INFORMATION;
 		return send_manufacturer_information();
 		break;
 	case(PAGE_PRODUCT_INFORMATION):
+		VLOG (1) << "PAGE_PRODUCT_INFORMATION " << PAGE_PRODUCT_INFORMATION;
 		return send_product_information();
 		break;
 	case(PAGE_COMMAND_STATUS):
+		VLOG (1) << "PAGE_COMMAND_STATUS " << PAGE_COMMAND_STATUS;
 		return send_command_status();
 		break;
 	default:
-		printf("\nunsupported page %d\n", request->requested_page_number);
+		std::cout << "Unsupported page " << request->requested_page_number << std::endl;
 	}
 
 	return true;
@@ -527,18 +552,19 @@ double CANTMaster::calc_power_required_watts(){
 	//double cd = 0.63;
 	//double area_m = 0.509;
 	double wind_resistance_coef;	// was a multiple of above values which was 0.39. Ant requests a drag coef of .51 for default
-	double crr;			// ant wants default = 0.004.  I had default of 0.005;	
+	double crr;			// ant wants default = 0.004.  I had default of 0.005;
 
 	// leave these alone
 	double f_gravity;
 	double f_rolling;
-	double f_drag;			
+	double f_drag;
 	double slope;
 	double speed_ms;
 	double power_watts;
 	double drafting_factor;
 
 	// my user specs...get them
+	VLOG (2) <<"User weight: " << m_user_weight_kg << ", Bike weight: " << m_bike_weight_kg << ", Drafting factor: " << m_drafting_factor << ", Speed: " << m_speed_kph << ", Wind Speed: " << m_wind_speed_kph << ", Slope: " << m_slope;
 	pthread_mutex_lock(&m_vars_mutex);
 	weight_kg = m_user_weight_kg + m_bike_weight_kg;
 	wind_resistance_coef = m_wind_resistance_coef;
@@ -612,8 +638,8 @@ CANTMaster::CANTMaster()
 	m_wheel_circumference_mm = 2105;	// 700x25
 	m_user_config_state = USER_CONFIG_STATE_EMPTY;	// no data in user config
 
-	m_wind_resistance_coef = 0.51;// road  bike hoods 
-	m_wind_speed_kph = 0;	
+	m_wind_resistance_coef = 0.51;// road  bike hoods
+	m_wind_speed_kph = 0;
 	m_drafting_factor = 1.0;
 
 }
@@ -627,6 +653,7 @@ CANTMaster::~CANTMaster()
 bool CANTMaster::init(Fortius* fortius)
 {
 	m_fortius = fortius;
+
 	// set default load
 
 	//*
@@ -638,21 +665,25 @@ bool CANTMaster::init(Fortius* fortius)
 	//*/
 	m_retry_count=0;
 	if(false == ANT_Init(0,57600)) {
-		printf("\nFailed ANT_Init\n");
+		std::cout << "Failed ANT init" << std::endl;
 		return FALSE;
 	}
-	printf("\nAnt Assign Response Function\n");
+	VLOG(1) << "ANT Assign Response Function";
 	ANT_AssignResponseFunction(CANTMaster::response_callback, m_response_buffer);
-	printf("\nAnt Assign Event Funcion\n");
+
+	VLOG(1) << "ANT Assign Event Funcion";
 	ANT_AssignChannelEventFunction(m_channel_number,CANTMaster::channel_callback, m_channel_buffer);
-	printf("\nResetSystem\n");
-	if(false == ANT_ResetSystem()) {
-		printf("\nFailed ANT_ResetSystem\n");
+
+	VLOG (1) << "Reset System";
+	if(ANT_ResetSystem()  == false) {
+		std::cout << "Failed ANT Reset System";
 		return FALSE;
 	}
-	printf("\nNap\n");
+
+	VLOG (1) << "ANT Nap";
 	ANT_Nap(2000);
-	printf("\nDone napping\n");
+	VLOG (1) << "ANT Nap DONE";
+
 	return TRUE;
 }
 bool CANTMaster::start()
@@ -692,12 +723,23 @@ bool CANTMaster::stop()
 	return TRUE;
 }
 
+bool CANTMaster::set_defaults (double init_user_weight, double init_bike_weight, double init_wheel_circumference_mm)
+{
+	pthread_mutex_lock(&m_vars_mutex);
+	m_user_weight_kg = init_user_weight;
+	m_bike_weight_kg = init_bike_weight;
+	m_wheel_circumference_mm = init_wheel_circumference_mm;
+	pthread_mutex_unlock(&m_vars_mutex);
+
+	return TRUE;
+}
 
 void* CANTMaster::mainloop(void)
 {
-	uint8_t		count_mod_8;
+	uint32_t		count_mod_8;
 	uint8_t		enter_button_state = EBS_UP;
-	bool		toggle = true;
+//	bool			toggle = true;
+	uint32_t		common_pages_count = 0;
 	uint32_t	count = 0;
 	uint8_t		network_key[8] = ANTPLUS_NETWORK_KEY;
 	uint8_t		requested_mode;
@@ -709,22 +751,23 @@ void* CANTMaster::mainloop(void)
 	double		distance_meters;
 	double		slope;
 	double		power_required_watts;
-	int		buttons;
-	int		steering;
-	int		status;
+	int				buttons;
+	int				steering;
+	int				status;
 	timespec	start_time;
-	int		calibrate_count;
-	
+	int				calibrate_count;
+
 
 
 	m_channel_open = FALSE;
 	//STEP1 ANT_SetNetworkKey
 	if(false == ANT_SetNetworkKey(0, network_key)) {
-		printf("\nmainloop: failed to set network key\n");
+		std::cout << "Failed to set ANT network key" << std::endl;
 		return NULL;
 	}
+
 	while(FALSE == m_channel_open && false == m_exit_flag) {
-		printf("\nwait for channel open\n");
+		VLOG (1) << "Wait for ANT channel open";
 		usleep(25000);	// wait 250ms (1/4 second)
 		m_retry_count++;
 		if(25==m_retry_count) {	// 10 seconds
@@ -732,7 +775,9 @@ void* CANTMaster::mainloop(void)
 			return NULL;
 		}
 	}
-	printf("\nchannel open\n");
+
+	VLOG (1) << "ANT Channel open";
+
 	// start time
 	clock_gettime(CLOCK_MONOTONIC, &start_time);
 	m_start_seconds = to_seconds(&start_time);
@@ -752,7 +797,7 @@ void* CANTMaster::mainloop(void)
 		target_power_watts = m_target_power_watts;
 		requested_mode = m_requested_mode;
 		slope = m_slope;
-		
+
 		// set everything else
 		m_power_produced_watts = power_produced_watts;
 		m_heartrate_bpm = heartrate_bpm;
@@ -772,14 +817,14 @@ void* CANTMaster::mainloop(void)
 			calibrate_count = 40;
 		}else if((buttons & FT_PLUS) == FT_PLUS){
 			target_power_watts+=10;		// add 10 watts
-			printf("\nnew load %fwatts\n", target_power_watts);
+			std::cout << "New load: " << target_power_watts << "[W]" << std::endl;
 			pthread_mutex_lock(&m_vars_mutex);
 			m_target_power_watts = target_power_watts;
 			pthread_mutex_unlock(&m_vars_mutex);
-	
+
 		}else if((buttons & FT_MINUS) == FT_MINUS){
 			target_power_watts-=10;		// -10 watts
-			printf("\nnew load %fwatts\n", target_power_watts);
+			std::cout << "New load: " << target_power_watts << "[W]" << std::endl;
 			pthread_mutex_lock(&m_vars_mutex);
 			m_target_power_watts = target_power_watts;
 			pthread_mutex_unlock(&m_vars_mutex);
@@ -797,18 +842,22 @@ void* CANTMaster::mainloop(void)
 		}else if(requested_mode == FT_CALIBRATE){
 			m_fortius->setMode(FT_CALIBRATE);
 			// if we are calibrating....average in calibration value
-			// do an exponential moving average 
+			// do an exponential moving average
 			// on the raw power numbers from the machine
 			if(0 >= calibrate_count--){
 				requested_mode = FT_ERGOMODE;
 				pthread_mutex_lock(&m_vars_mutex);
 				m_requested_mode = requested_mode;
 				pthread_mutex_unlock(&m_vars_mutex);
-				printf("\n final calibration value %f\n", m_fortius->getBrakeCalibrationLoadRaw());
+				std::cout << "Final calibration value: " << m_fortius->getBrakeCalibrationLoadRaw() << std::endl;
+
+//				printf("\n final calibration value %f\n", m_fortius->getBrakeCalibrationLoadRaw());
 			}
-			printf("\n %d calibration value %f\n",calibrate_count, m_fortius->getBrakeCalibrationLoadRaw());
-		}else{
-			printf("\n error! unknown mode %d\n", requested_mode);
+			std::cout << calibrate_count << " Calibration value: " << m_fortius->getBrakeCalibrationLoadRaw() << std::endl;
+
+//			printf("\n %d calibration value %f\n",calibrate_count, m_fortius->getBrakeCalibrationLoadRaw());
+		} else {
+			std::cout << "Error: unknown mode" << std::endl;
 			requested_mode = FT_ERGOMODE;
 
 			pthread_mutex_lock(&m_vars_mutex);
@@ -816,7 +865,7 @@ void* CANTMaster::mainloop(void)
 			pthread_mutex_unlock(&m_vars_mutex);
 		}
 
-		printf("\rpower mk %fw, cadence %f, speed %fmph, power nd %fw power raw %f speed raw %f",
+		/*printf("\rpower mk %fw, cadence %f, speed %fmph, power nd %fw power raw %f speed raw %f",
 			   power_produced_watts,
 			   cadence_rpm,
 			   m_speed_kph*0.62137100000000001,
@@ -825,6 +874,14 @@ void* CANTMaster::mainloop(void)
 			   m_fortius->rawSpeed);
 
 		fflush(stdout);
+		*/
+
+		VLOG_IF (2, requested_mode == FT_IDLE) << "MODE: FT_IDLE";
+		VLOG_IF (2, requested_mode == FT_ERGOMODE) << "MODE: FT_ERGOMODE";
+		VLOG_IF (2, requested_mode == FT_SSMODE) << "MODE: FT_SSMODE";
+		VLOG (2) << "power mk: " << power_produced_watts << "[W], cadence: " << cadence_rpm << "[rpm], speed: " << m_speed_kph << "[kmh]";
+
+		std::cout << "Speed: " << m_speed_kph << " [kmh], Cadence: " << cadence_rpm << " [rpm], Power: " << power_produced_watts << " [W]\r"  << std::flush;
 
 		/* debug
 		power_produced_watts = 403;
@@ -845,7 +902,79 @@ void* CANTMaster::mainloop(void)
 		}
 
 		count_mod_8 = count%8;
+		VLOG (2) << "page " << count << ", common page " << common_pages_count << ", intra 8 pages count " << count_mod_8;
 
+		// 66 pages
+		switch (count) {
+				// Common pages 80 and 81 are transmitted alternatively after every 64 pages
+				// Both are sent 2x consecutively
+				case 64:
+				case 65:
+					if ((common_pages_count == 0) || (common_pages_count == 1)) {
+						// Transmit common pages 80 2x consecutively after 64 pages
+						if(send_manufacturer_information() != true) {
+							std::cout << "Failed to send common data page 80" << std::endl;
+							// TODO: reset connection?
+						};
+					} else {
+						// Transmit common pages 80 2x consecutively after 130 pages
+						if(send_product_information() != true) {
+							std::cout << "Failed to send common data page 81" << std::endl;
+							// TODO: reset
+						};
+					};
+					common_pages_count = (common_pages_count+1)%4;
+					break;
+
+				default:
+					// 8 pages
+					// 0, 1, 4, 5	: 0x10 (16) General FE Data
+					// 2, 6				: 0x19 (25) Specific Trainer Data
+					// 3					: 0x11 (17) General Settings Page
+					// 7					: 0x12 (18) General FE Metabolic Data (OPTIONAL)
+					//
+
+					switch (count_mod_8) {
+						case 0:
+						case 1:
+						case 4:
+						case 5:
+							// send page 0x10 (16) General FE Data
+							if (send_general_fe () != true) {
+								std::cout << "Failed to send general fe (0x10-16)" << std::endl;
+								// TODO reset
+							};
+							break;
+
+						case 2:
+						case 6:
+							// send page 0x19 (25) Specific Trainer Data
+							if (send_specific_trainer () != true) {
+								std::cout << "Failed to send specific trainer (0x19-25)" << std::endl;
+								// TODO: reset
+							};
+							break;
+
+						case 3:
+							// send page 0x11 (17) General Settings Page
+							if (send_general_settings () != true) {
+								std::cout << "Failed to send general settings (0x11-17)" << std::endl;
+								// TODO: reset
+							};
+							break;
+
+						case 7:
+							// send page 0x12 (18) General FE Metabolic Data (OPtIONAL)
+							break;
+					};
+		};
+		// Send 64+2 consecutive pages each time
+		count = (count+1)%66;
+		// Sleep 250 msec
+		usleep(250000);
+
+
+		/*
 		if(count == 64 || count == 65) {
 			if(toggle == true) {
 				// send common page 80
@@ -887,7 +1016,7 @@ void* CANTMaster::mainloop(void)
 		count = (count+1)%66;	// inc and loop back every 66
 
 		usleep(250000);	// sleep 1/4 second
-
+*/
 	}
 	return NULL;
 }
@@ -905,53 +1034,54 @@ int8_t CANTMaster::channel_handler(uint8_t channel_number, uint8_t event)
 	case EVENT_RX_FLAG_ACKNOWLEDGED:
 	case EVENT_RX_FLAG_BURST_PACKET:
 	case EVENT_RX_FLAG_BROADCAST:
-		printf("\nRx Channel FLAG %d, event %d\n", channel_number, event);
+		VLOG (1) << "Rx Channel Flag " << channel_number << ", event " << event;
 		break;
 
 	case EVENT_RX_ACKNOWLEDGED:
 	case EVENT_RX_BURST_PACKET:
 	case EVENT_RX_BROADCAST:
+		VLOG (1) << "Rx Channel Event " << channel_number << ", command " << m_channel_buffer [1];
 		switch(m_channel_buffer[1]) {
 		m_last_rx_command_id = m_channel_buffer[1];
 		m_command_status = COMMAND_STATUS_PASS;			// default to this, then switch to an error if needed
 		case(PAGE_BASIC_RESISTANCE):
 			if(false == process_basic_resistance((basic_resistance_t*)&m_channel_buffer[1])) {
 				m_command_status = COMMAND_STATUS_FAILED;
-				printf("\nfailed to process basic resistance message\n");
+				std::cout << "Failed to process basic resistance message" << std::endl;
 			}
 			break;
 		case(PAGE_TARGET_POWER):
 			if(false == process_target_power((target_power_t*)&m_channel_buffer[1])) {
 				m_command_status = COMMAND_STATUS_FAILED;
-				printf("\nfailed to process target power message\n");
+				std::cout << "Failed to process target power message" << std::endl;
 			}
 			break;
 		case(PAGE_WIND_RESISTANCE):
 			if(false == process_wind_resistance((wind_resistance_t*)&m_channel_buffer[1])) {
 				m_command_status = COMMAND_STATUS_FAILED;
-				printf("\nfailed to process wind resistance message\n");
+				std::cout << "Failed to process wind resistance message" << std::endl;
 			}
 			break;
 		case(PAGE_TRACK_RESISTANCE):
 			if(false == process_track_resistance((track_resistance_t*)&m_channel_buffer[1])) {
 				m_command_status = COMMAND_STATUS_FAILED;
-				printf("\nfailed to process track resistance message\n");
+				std::cout << "Failed to process track resistance message" << std::endl;
 			}
 			break;
 		case(PAGE_USER_CONFIGURATION):
 			if(false == process_user_configuration((user_configuration_t*)&m_channel_buffer[1])) {
 				m_command_status = COMMAND_STATUS_FAILED;
-				printf("\nfailed to process user configuration message\n");
+				std::cout << "Failed to process user configuration message" << std::endl;
 			}
 			break;
 		case(PAGE_REQUEST):
 			if(false == process_request((request_t*)&m_channel_buffer[1])) {
 				m_command_status = COMMAND_STATUS_FAILED;
-				printf("\nfailed to process page request message\n");
+				std::cout << "Failed to process page request message" << std::endl;
 			}
 			break;
 		default:
-			printf("\nunknown message\n");
+			std::cout << "Unknown message" << std::endl;
 			m_command_status = COMMAND_STATUS_NOT_SUPPORTED;
 			hex_dump((uint8_t*)&m_channel_buffer[0], sizeof(m_channel_buffer));
 			break;
@@ -962,13 +1092,16 @@ int8_t CANTMaster::channel_handler(uint8_t channel_number, uint8_t event)
 	case EVENT_RX_EXT_ACKNOWLEDGED:
 	case EVENT_RX_EXT_BURST_PACKET:
 	case EVENT_RX_EXT_BROADCAST:
-		printf("\nRx Channel EXT %d, event %d\n", channel_number, event);
+		VLOG (1) << "Rx Channel EXT " << channel_number << ", event " << event;
+//		printf("\nRx Channel EXT %d, event %d\n", channel_number, event);
 		break;
 	case EVENT_TX:
 		// ignore tx events
 		break;
 	default:
-		printf("\nRx Channel %d, event %d unknown\n", channel_number, event);
+//		printf("\nRx Channel %d, event %d unknown\n", channel_number, event);
+		VLOG (1) << "Rx Channel " << channel_number << ", event " << event << "unknown";
+
 	}
 
 	return TRUE;
@@ -980,7 +1113,7 @@ int8_t CANTMaster::response_callback(uint8_t channel_number, uint8_t message_id)
 int8_t CANTMaster::response_handler(uint8_t channel_number, uint8_t message_id)
 {
 	if(channel_number != m_channel_number) {
-		printf("\nInvalid channel %d message received.  Expected messages for channel %d.\n", channel_number, m_channel_number);
+		std::cout << "Invalid channel message received: " << channel_number << " iso " << m_channel_number << std::endl;
 		return FALSE;
 	}
 
@@ -1007,7 +1140,7 @@ bool CANTMaster::fec_init(uint8_t message_id,uint8_t result)
 	//step 1 setneworkkey
 	case MESG_NETWORK_KEY_ID:
 		if(false == ANT_AssignChannel(0/*channel*/, 0x10/*master*/, 0/*network_num*/)) {
-			printf("\nFailed ANT_AssignChannel\n");
+			std::cout << "Failed ANT assign channel" << std::endl;
 		}
 		break;
 
@@ -1038,17 +1171,15 @@ bool CANTMaster::fec_init(uint8_t message_id,uint8_t result)
 		break;
 
 	default:
-		printf("\nUnknown MESG type %d.", message_id);
+		std::cout << "Unknown MESG type: " << message_id << std::endl;
 		m_retry_count++;
 		if(m_retry_count>=10) {
-			printf("\nFailed after %d attempts.\n", m_retry_count);
+			std::cout << "Retry failed" << std::endl;
 			stop();
 		} else {
-			printf("\nRetrying again %d.\n", m_retry_count);
 			ANT_SetNetworkKey(0, network_key);
 		}
 		break;
 	}
 	return TRUE;
 }
-

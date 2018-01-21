@@ -21,6 +21,7 @@
 
 #include "Fortius.h"
 #include "EndianSwap.h"
+#include <glog/logging.h>
 
 
 #define MAX_LOAD_WATTS 1000
@@ -85,11 +86,11 @@ Fortius::Fortius()
 	memcpy(SLOPE_Command, slope_command, 12);
 	memcpy(CALIBRATE_Command, calibrate_command, 12);
 
-	std::cout << "\nFortius::Fortius: new LibUsb\n";
+	VLOG(1) << "Fortius::Fortius: new LibUsb";
 	// for interacting over the USB port
 	usb2 = new LibUsb(TYPE_FORTIUS);
 
-	std::cout << "\nFortius::Fortius: pthread_mutex_init\n";
+ 	VLOG(1) << "Fortius::Fortius: pthread_mutex_init";
 	pthread_mutex_init(&pvars, NULL);
 }
 
@@ -181,7 +182,7 @@ double Fortius::getLoadPercentage()
 	loadWatts = getLoad();
 
 	loadPercentage = 100 * ( loadWatts/MAX_LOAD_WATTS );
-	
+
 	return loadPercentage;
 }
 
@@ -301,7 +302,7 @@ Fortius::start()
 	this->deviceStatus = FT_RUNNING;
 	pthread_mutex_unlock(&pvars);
 
-	std::cout << "\nFortius::start: pthread_create\n";
+	VLOG(1) << "Fortius::start: pthread_create";
 	pthread_create(&thread_handle, NULL, Fortius::run_helper, this);
 	return 0;
 }
@@ -390,7 +391,9 @@ int Fortius::quit(int code)
 	pthread_mutex_lock(&pvars);
 	this->deviceStatus = FT_ERROR;
 	pthread_mutex_unlock(&pvars);
-	printf("exit code %d\n", code);
+
+	VLOG(1) << "Exit code: " << code;
+	//printf("exit code %d\n", code);
 
 	// event code goes here!
 	//exit(code);
@@ -399,7 +402,7 @@ int Fortius::quit(int code)
 
 void* Fortius::run_helper(void* This)
 {
-	std::cout <<"\nFortius::run_helper: entry\n";
+	VLOG (1) << "Fortius::run_helper: entry";
 
 	Fortius*    me = (Fortius*)This;
 
@@ -410,17 +413,18 @@ void* Fortius::run_helper(void* This)
 
 void Fortius::hex_dump(uint8_t* data, int data_size)
 {
-        int cnt;
-	printf("\n");
-        for(cnt=0; cnt < data_size; cnt++) {
-                printf("%02x ", data[cnt]);
-                if(cnt%8==7) {
-                        printf(" ");
-                }
+	int cnt;
+
+	printf ("\n");
+  for (cnt=0; cnt < data_size; cnt++) {
+  	printf ("%02x ", data[cnt]);
+    if(cnt%8==7) {
+    	printf(" ");
+    }
 		if(cnt%16==15){
 			printf("\n");
 		}
-        }
+  }
 }
 
 double Fortius::calculateWattageFromRaw(double curRawPower, double curRawSpeed){
@@ -436,7 +440,7 @@ double Fortius::calculateWattageFromRaw(double curRawPower, double curRawSpeed){
 	// old slopeCalc = 0.001366 * curDeviceSpeed + 0.0308;
 	// newer slopeCalc = 0.191 * curDeviceSpeed + 0.076;
 	slopeCalc = 0.00000670 * (curRawSpeed) + 0.002;
-	
+
 	//offsetCalc = -0.03526 * curBrakeCalibrationLoadRaw + 1.708;
 	offsetCalc = 0;
 
@@ -445,7 +449,7 @@ double Fortius::calculateWattageFromRaw(double curRawPower, double curRawSpeed){
 
 	return powerCalcWatts;
 
-} 
+}
 double Fortius::calculateRawLoadFromWattage(double requiredWatts){
 	double curBrakeCalibrationLoadRaw;
 	double slopeCalc;
@@ -473,14 +477,14 @@ double Fortius::calculateRawLoadFromWattage(double requiredWatts){
 	//printf("\n pwer raw %f slope calc %f offsetCalc %f required watts %f\n", powerRaw, slopeCalc, offsetCalc, requiredWatts);
 	return powerRaw;
 }
-	
+
 
 /*----------------------------------------------------------------------
  * THREADED CODE - READS TELEMETRY AND SENDS COMMANDS TO KEEP FORTIUS ALIVE
  *----------------------------------------------------------------------*/
 void Fortius::run()
 {
-	std::cout<<"\nFortius::run: starting\n";
+	VLOG (1) << "Fortius::run: starting";
 
 	// newly read values - compared against cached values
 	bool isDeviceOpen = false;
@@ -495,7 +499,7 @@ void Fortius::run()
 	double curCadence;                    // current cadence in RPM
 	double curSpeed;                      // current speed in KPH
 	double curDistance;                    // odometer?
-	uint32_t	startDistanceDoubleRevs; // every revolution of the roller counts twice for these two variaboueles 
+	uint32_t	startDistanceDoubleRevs; // every revolution of the roller counts twice for these two variaboueles
 	uint32_t	curDistanceDoubleRevs;	// nu
 	int curButtons;                       // Button status
 	int curSteering;                    // Angle of steering controller
@@ -505,6 +509,7 @@ void Fortius::run()
 	double cur_calibration_load_raw;
 	double curRawSpeed;
 	double curRawPower;			// read the raw power number from 48 byte message...THIS IS NOT WATTS? is it TORQUE?
+	timespec last_measured_time;
 
 	// initialise local cache & main vars
 	pthread_mutex_lock(&pvars);
@@ -530,122 +535,138 @@ void Fortius::run()
 		sendOpenCommand();
 	}
 
+	// Store currrent time
+	clock_gettime (CLOCK_MONOTONIC, &last_measured_time);
 
 	while(1) {
 		//printf("*");
 		if (isDeviceOpen == true) {
+			// Sleep for 250 msec after read before writing
+			go_sleep (&last_measured_time, FT_READ_DELAY);
 			// do calibration mode
-			int rc = sendRunCommand(pedalSensor) ;
+			int rc = sendRunCommand(pedalSensor);
+
+			// Store currrent time
+			clock_gettime (CLOCK_MONOTONIC, &last_measured_time);
+
 			if (rc < 0) {
-				std::cout << "\nFortius::run: usb write error " << rc;
+				std::cout << "Fortius::run: usb write error" << rc;
 				// send failed - ouch!
 				closePort(); // need to release that file handle!!
 				if(openPort()){
-					std::cout << "\nFortius::run: failed attempt to close and reopen port";
+					std::cout << "Fortius::run: failed attempt to close and reopen port";
 					quit(2);
 					return;
 				}
 				continue;	// ignore this error?
 			}
+			// Sleep for 70 msec after write before reading again
+			go_sleep (&last_measured_time, FT_WRITE_DELAY);
 			int actualLength = readMessage();
+			VLOG (2) << actualLength;
+
+			// Store currrent time
+			clock_gettime (CLOCK_MONOTONIC, &last_measured_time);
+
 			if (actualLength < 0) {
-				std::cout << "\nForitus::run: usb read error " << actualLength;
+				std::cout << "Fortius::run: usb read error " << actualLength;
 				closePort(); // need to release that file handle!!
 				if(openPort()){
-					std::cout << "\nFortius::run: failed attempt to close and reopen port";
+					std::cout << "Fortius::run: failed attempt to close and reopen port";
 					quit(2);
 					return;
 				}
 				continue;	// ignore this error?
 			}
 			else {
-			    if (actualLength >= 24) {
+		    if (actualLength >= 24) {
 
-				//----------------------------------------------------------------
-				// UPDATE BASIC TELEMETRY (HR, CAD, SPD et al)
-				// The data structure is very simple, no bit twiddling needed here
-				//----------------------------------------------------------------
+					//----------------------------------------------------------------
+					// UPDATE BASIC TELEMETRY (HR, CAD, SPD et al)
+					// The data structure is very simple, no bit twiddling needed here
+					//----------------------------------------------------------------
 
-				// buf[14] changes from time to time (controller status?)
+					// buf[14] changes from time to time (controller status?)
 
-				// buttons
-				curButtons = buf[13];
+					// buttons
+					curButtons = buf[13];
 
-				// steering angle
-				curSteering = buf[18] | (buf[19] << 8);
+					// steering angle
+					curSteering = buf[18] | (buf[19] << 8);
 
-				// update public fields
-				pthread_mutex_lock(&pvars);
-				deviceButtons |= curButtons;    // workaround to ensure controller doesn't miss button pushes
-				deviceSteering = curSteering;
-				pthread_mutex_unlock(&pvars);
+					// update public fields
+					pthread_mutex_lock(&pvars);
+					deviceButtons |= curButtons;    // workaround to ensure controller doesn't miss button pushes
+					deviceSteering = curSteering;
+					pthread_mutex_unlock(&pvars);
 			  }
+
 			  if (actualLength == 48) {
 				//printf("+");
 				// brake status status&0x04 == stopping wheel
 				//              status&0x01 == brake on
 				//curBrakeStatus = buf[42];
 
-				// pedal sensor is 0x01 when cycling
-				pedalSensor = buf[46];
+					// pedal sensor is 0x01 when cycling
+					pedalSensor = buf[46];
 
-				// current distance
-				curDistanceDoubleRevs = (buf[28] | (buf[29] << 8) | (buf[30] << 16) | (buf[31] << 24));
-				if(startDistanceDoubleRevs == 0 || startDistanceDoubleRevs == 4100){
-					startDistanceDoubleRevs = curDistance;
-				}
-				curDistance = ((double)curDistanceDoubleRevs) * HALF_ROLLER_CIRCUMFERENCE_M ;	//0.06264880952;
+					// current distance
+					curDistanceDoubleRevs = (buf[28] | (buf[29] << 8) | (buf[30] << 16) | (buf[31] << 24));
+					if (startDistanceDoubleRevs == 0 || startDistanceDoubleRevs == 4100){
+						startDistanceDoubleRevs = curDistance;
+					}
+					curDistance = ((double)curDistanceDoubleRevs) * HALF_ROLLER_CIRCUMFERENCE_M ;	//0.06264880952;
 
-				// cadence - confirmed correct
-				curCadence = buf[44];
+					// cadence - confirmed correct
+					curCadence = buf[44];
 
-				// speed
-				curRawSpeed =  (double)(FromLittleEndian<uint16_t>((uint16_t*)&buf[32]));
-				curSpeed = 1.3f * curRawSpeed / (3.6f * 100.00f);
+					// speed
+					curRawSpeed =  (double)(FromLittleEndian<uint16_t>((uint16_t*)&buf[32]));
+					curSpeed = 1.3f * curRawSpeed / (3.6f * 100.00f);
 
-				// power 
-				curRawPower = FromLittleEndian<int16_t>((int16_t*)&buf[38]);
-				if(FT_CALIBRATE == mode){
-					next_calibration_load_raw = curRawPower;
-					next_calibration_load_raw *= 0.9;
-					cur_calibration_load_raw = getBrakeCalibrationLoadRaw();
-					cur_calibration_load_raw *= 0.1;
-					cur_calibration_load_raw += next_calibration_load_raw;
-					setBrakeCalibrationLoadRaw(cur_calibration_load_raw);
-				}
+					// power
+					curRawPower = FromLittleEndian<int16_t>((int16_t*)&buf[38]);
+					if(FT_CALIBRATE == mode){
+						next_calibration_load_raw = curRawPower;
+						next_calibration_load_raw *= 0.9;
+						cur_calibration_load_raw = getBrakeCalibrationLoadRaw();
+						cur_calibration_load_raw *= 0.1;
+						cur_calibration_load_raw += next_calibration_load_raw;
+						setBrakeCalibrationLoadRaw(cur_calibration_load_raw);
+					}
 
-				nextPower = calculateWattageFromRaw(curRawPower, curRawSpeed);
-				if (nextPower < 0.0) {
-					nextPower = 0.0;    // brake power can be -ve when coasting.
-				}
-				
-				// EMA power
-				nextPower *= 0.25;
-				curPower *= 0.75;
-				curPower += nextPower;
-				
-								curPower *= powerScaleFactor; // apply scale factor
+					nextPower = calculateWattageFromRaw(curRawPower, curRawSpeed);
+					if (nextPower < 0.0) {
+						nextPower = 0.0;    // brake power can be -ve when coasting.
+					}
 
-				// heartrate - confirmed correct
-				curHeartRate = buf[12];
+					// EMA power
+					nextPower *= 0.25;
+					curPower *= 0.75;
+					curPower += nextPower;
 
-				// update public fields
-				pthread_mutex_lock(&pvars);
-				deviceSpeed = curSpeed;
-				deviceDistance = curDistance;
-				deviceCadence = curCadence;
-				deviceHeartRate = curHeartRate;
-				devicePower = curPower;
+					curPower *= powerScaleFactor; // apply scale factor
 
-				rawPower = curRawPower;
-				rawSpeed = curRawSpeed;
-				pthread_mutex_unlock(&pvars);
+					// heartrate - confirmed correct
+					curHeartRate = buf[12];
 
+					// update public fields
+					pthread_mutex_lock(&pvars);
+					deviceSpeed = curSpeed;
+					deviceDistance = curDistance;
+					deviceCadence = curCadence;
+					deviceHeartRate = curHeartRate;
+					devicePower = curPower;
 
-			    }
-			    if(actualLength != 24 && actualLength != 48) {
-				printf("\nFortius::run: error, got a length of %d ----------------------------------------\n", actualLength);
-			    }
+					rawPower = curRawPower;
+					rawSpeed = curRawSpeed;
+					pthread_mutex_unlock(&pvars);
+
+			  }
+
+			  if(actualLength != 24 && actualLength != 48) {
+					std::cout << "Fortius::run: error, got a length of " << actualLength << std::endl;
+			   }
 			}
 		}
 
@@ -686,7 +707,7 @@ void Fortius::run()
 
 		// The controller updates faster than the brake. Setting this to a low value (<50ms) increases the frequency of controller
 		// only packages (24byte).
-		usleep(10000);	// 10ms
+		//usleep(10000);	// 10ms
 	}
 }
 
@@ -755,7 +776,7 @@ int Fortius::sendRunCommand(int16_t pedalSensor)
 		// Not yet implemented, easy enough to start calibration but appears that the calibration factor needs
 		// to be calculated by observing the brake power and speed after calibration starts (i.e. it's not returned
 		// by the brake).
-		retCode = rawWrite(CALIBRATE_Command, 12);	
+		retCode = rawWrite(CALIBRATE_Command, 12);
 	}
 
 	//std::cout << "usb status " << retCode;
@@ -780,6 +801,36 @@ int Fortius::readMessage()
 	rc = rawRead(buf, 64);
 	//std::cout << "usb status " << rc;
 	return rc;
+}
+
+void Fortius::go_sleep (timespec *last_measured_time, int delay_msec)
+{
+	timespec 	current_time;
+	timespec	time_passed;
+	int				time_passed_msec;
+
+	clock_gettime (CLOCK_MONOTONIC, &current_time);
+
+	time_passed = timespec_diff (last_measured_time, &current_time);
+	time_passed_msec = (int)time_passed.tv_sec * 1000 + (double)time_passed.tv_nsec/1000000.0;
+	if (delay_msec - time_passed_msec > 0) {
+		VLOG (2) << "Delay: " << delay_msec - time_passed_msec << " [msec]";
+		usleep ((delay_msec - time_passed_msec) * 1000);
+	}
+}
+
+timespec Fortius::timespec_diff(timespec *start, timespec *end)
+{
+	timespec temp;
+
+	if ((end->tv_nsec-start->tv_nsec)<0) {
+		temp.tv_sec = end->tv_sec-start->tv_sec-1;
+		temp.tv_nsec = 1000000000+end->tv_nsec-start->tv_nsec;
+	} else {
+		temp.tv_sec = end->tv_sec-start->tv_sec;
+		temp.tv_nsec = end->tv_nsec-start->tv_nsec;
+	}
+	return temp;
 }
 
 int Fortius::closePort()

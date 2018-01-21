@@ -54,6 +54,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <time.h>
 
 /* Device operation mode */
 #define FT_IDLE        0x00
@@ -72,15 +73,19 @@
 #define FT_PAUSED      0x02
 #define FT_ERROR       0x04
 
+// Delays in msec
+#define FT_READ_DELAY		240
+#define FT_WRITE_DELAY	70
+
 #define DEFAULT_LOAD         100.00
 #define DEFAULT_GRADIENT     2.00
 #define DEFAULT_WEIGHT       77
-#define DEFAULT_CALIBRATION  0	
+#define DEFAULT_CALIBRATION  0
 #define DEFAULT_SCALING      1.00
 
 #define DEFAULT_CALIBRATION_LOAD_RAW	650  			// 0-1300 seems reasonable
 
-#define HALF_ROLLER_CIRCUMFERENCE_M 0.06264880952	// distance given is number of 
+#define HALF_ROLLER_CIRCUMFERENCE_M 0.06264880952	// distance given is number of
 
 #define FT_USB_TIMEOUT      500
 
@@ -154,6 +159,9 @@ private:
 	// Protocol decoding
 	int readMessage();
 	//void unpackTelemetry(int &b1, int &b2, int &b3, int &buttons, int &type, int &value8, int &value12);
+
+	void go_sleep (timespec *last_measured_time, int delay_msec);
+	timespec timespec_diff (timespec *start, timespec *end);
 
 
 	// INBOUND TELEMETRY - all volatile since it is updated by the run() thread

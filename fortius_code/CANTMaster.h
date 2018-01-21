@@ -85,7 +85,7 @@ typedef struct user_configuration_s{
 	uint8_t		reserved;		// 0xFF
 	uint8_t		wheel_diameter_offset:4;	// 1mm
 	uint16_t	bike_weight:12;		// 0.05kg
-	uint8_t		wheel_diameter;		// 0.01m (1cm 
+	uint8_t		wheel_diameter;		// 0.01m (1cm
 	uint8_t		gear_ratio;		// ignore?
 }user_configuration_t;
 
@@ -98,7 +98,7 @@ typedef struct common_page_70_s{
 	uint8_t		requested_page_number;	// 0x47 perhaps?  what page do you want back?
 	uint8_t		command_type;		// 1 data page, 2 ant fs session, 3 data page from slave, 4 data page set
 }request_t, common_page_70_t;
-	
+
 typedef struct common_page_71_s{
 	uint8_t		data_page_number;	// 0x47 page 71
 	uint8_t		last_rx_command_id;	// 0xFF means no command rxed
@@ -120,13 +120,14 @@ public:
 	bool	join();
 	bool	stop();
 	bool	kill();
+	bool  set_defaults (double init_user_weight, double init_bike_weight, double init_wheel_circumference_mm);
 
 	static void*	mainloop_helper(void *context);
 	void*		mainloop(void);
 private:
 
 	void		hex_dump(uint8_t* data, int data_size);
-	double		to_seconds(struct timespec* ts);
+	double	to_seconds(struct timespec* ts);
 	static int8_t	channel_callback(uint8_t channel_number, uint8_t event);
 	int8_t		channel_handler(uint8_t channel_number, uint8_t event);
 	static int8_t	response_callback(uint8_t channel_number, uint8_t message_id);
@@ -164,13 +165,13 @@ private:
 	int			m_retry_count;
 	Fortius*		m_fortius;
 	uint8_t			m_channel_number;
-	uint8_t			m_user_config_state;			// USER_CONFIG_STATE_EMPTY->USER_CONFIG_STATE_WAITING->USER_CONFIG_STATE_RX;	
+	uint8_t			m_user_config_state;			// USER_CONFIG_STATE_EMPTY->USER_CONFIG_STATE_WAITING->USER_CONFIG_STATE_RX;
 	uint16_t		m_device_id;
 
 	pthread_mutex_t		m_vars_mutex;
 
 	uint8_t			m_last_rx_command_id;
-	uint8_t			m_sequence_number;	
+	uint8_t			m_sequence_number;
 	uint32_t		m_start_seconds;
 	uint8_t			m_command_status;
 	// read from fortius
@@ -196,4 +197,3 @@ private:
 	double			m_bike_weight_kg;
 	double			m_wheel_circumference_mm;
 };
-
