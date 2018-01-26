@@ -13,7 +13,7 @@ void ctrlc_handler(int sig)
 {
 	static bool first_time=true;
 
-	printf("Caught ctrl-c.\n");
+	printf("Caught ctrl-c. sig %d\n", sig);
 	if(first_time == true) {
 		first_time = false;
 		printf("first time.\n");
@@ -57,6 +57,9 @@ int main(int argc, char* argv[])
 		printf("Failed to create pid file. Please run as SU.\n");
 		return -1;
 	}
+	pid_t	my_pid = getpid();
+	fprintf(pid_fd, "%d", my_pid);
+	fclose(pid_fd);
 
 	fortius = new Fortius();
 	if(fortius) {
