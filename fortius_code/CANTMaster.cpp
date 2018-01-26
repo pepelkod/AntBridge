@@ -277,7 +277,7 @@ bool CANTMaster::send_manufacturer_information()
 	manufacturer_information.data_page_number = 0x50;
 	manufacturer_information.reserved = 0xFFFF;
 	manufacturer_information.hardware_rev = 1;
-	manufacturer_information.manufacturer_id = 0xFF;//WAHOO_FITNESS;	// 0xFF is development
+	manufacturer_information.manufacturer_id = TACX;	//WAHOO_FITNESS;	// 0xFF is development
 	manufacturer_information.model_id = 0x01;		// first one
 
 	//printf("\nmanufacturer_information\n");
