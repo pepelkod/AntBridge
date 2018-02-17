@@ -126,17 +126,6 @@ int main(int argc, char* argv[])
 	std::cout << "Bike weight         : " << bike_weight << " [kg]\n";
 	std::cout << "Wheel circumference : " << wheel_circumference_mm << " [mm]\n" << std::endl;
 
-	// setup pidfile
-	snprintf(pid_file_path, sizeof(pid_file_path), PIDFILE, argv[0]);
-	pid_fd = fopen(pid_file_path, "wb");
-	if(!pid_fd){
-		printf("Failed to create pid file. Please run as SU.\n");
-//		return -1;
-	}
-	pid_t	my_pid = getpid();
-	fprintf(pid_fd, "%d", my_pid);
-	fclose(pid_fd);
-
 	// Initialize Tacx Fortius
 	fortius = new Fortius();
 	if(fortius) {

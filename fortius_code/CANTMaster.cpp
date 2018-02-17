@@ -382,7 +382,7 @@ bool CANTMaster::process_wind_resistance(wind_resistance_t* wind_resistance)
 		// default
 		wind_speed_kph = 0;
 	}else{
-		wind_speed_kph = wind_resistance->wind_speed;
+		wind_speed_kph = wind_resistance->wind_speed-0x7F;
 	}
 	if(wind_resistance->drafting_factor == 0xFF){
 		// default

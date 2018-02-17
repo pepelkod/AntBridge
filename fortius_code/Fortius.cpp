@@ -601,7 +601,7 @@ void Fortius::run()
 					pthread_mutex_unlock(&pvars);
 			  }
 
-			  if (actualLength == 48) {
+			  if (actualLength >= 48) {
 				//printf("+");
 				// brake status status&0x04 == stopping wheel
 				//              status&0x01 == brake on
