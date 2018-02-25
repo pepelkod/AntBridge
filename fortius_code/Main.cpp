@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
 
 	// Initialize Google Logging
 	google::InitGoogleLogging (argv [0]);
-	FLAGS_logtostderr = 1;
+	FLAGS_logtostderr = 0;
 	FLAGS_v = 0;
 	VLOG (1) << "Logging initialized";
 
