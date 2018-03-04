@@ -492,7 +492,7 @@ bool LibUsb::findAntStick()
 		for (dev = bus->devices; dev; dev = dev->next) {
 
 			if (dev->descriptor.idVendor == GARMIN_USB2_VID &&
-					(dev->descriptor.idProduct == GARMIN_USB2_PID || dev->descriptor.idProduct == GARMIN_OEM_PID)) {
+					(dev->descriptor.idProduct == GARMIN_USB2_PID || dev->descriptor.idProduct == GARMIN_OEM_PID || dev->descriptor.idProduct == GARMIN_OLD_PID)) {
 				found = true;
 			}
 		}
