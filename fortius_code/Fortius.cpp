@@ -539,12 +539,15 @@ void Fortius::run()
 	clock_gettime (CLOCK_MONOTONIC, &last_measured_time);
 
 	while(1) {
-		//printf("*");
+		printf("*");
 		if (isDeviceOpen == true) {
 			// Sleep for 250 msec after read before writing
+			printf("\nsleep 1\n");
 			go_sleep (&last_measured_time, FT_READ_DELAY);
+			printf("\nwake 1\n");
 			// do calibration mode
 			int rc = sendRunCommand(pedalSensor);
+			printf("Return sendRunCommand\n");
 
 			// Store currrent time
 			clock_gettime (CLOCK_MONOTONIC, &last_measured_time);
@@ -561,9 +564,12 @@ void Fortius::run()
 				continue;	// ignore this error?
 			}
 			// Sleep for 70 msec after write before reading again
+			printf("sleep 2\n");
 			go_sleep (&last_measured_time, FT_WRITE_DELAY);
+			printf("wake 2\n");
 			int actualLength = readMessage();
-			VLOG (2) << actualLength;
+			printf("RETURN: readMesssage %d bytes\n", actualLength);
+			//VLOG (2) << actualLength;
 
 			// Store currrent time
 			clock_gettime (CLOCK_MONOTONIC, &last_measured_time);
@@ -579,7 +585,7 @@ void Fortius::run()
 				continue;	// ignore this error?
 			}
 			else {
-		    if (actualLength >= 24) {
+			   if (actualLength >= 24) {
 
 					//----------------------------------------------------------------
 					// UPDATE BASIC TELEMETRY (HR, CAD, SPD et al)
@@ -651,7 +657,9 @@ void Fortius::run()
 					curHeartRate = buf[12];
 
 					// update public fields
+					printf("\n			CALL: pthread_mutex_lock on updating telemetry\n");
 					pthread_mutex_lock(&pvars);
+					printf("\n 			RETURN: pthread_mutex_lock on updating telemetry\n");
 					deviceSpeed = curSpeed;
 					deviceDistance = curDistance;
 					deviceCadence = curCadence;
@@ -668,19 +676,24 @@ void Fortius::run()
 					std::cout << "Fortius::run: error, got a length of " << actualLength << std::endl;
 			   }
 			}
+		}else{
+			printf("\n device not open??\n");
 		}
 
 		//----------------------------------------------------------------
 		// LISTEN TO GUI CONTROL COMMANDS
 		//----------------------------------------------------------------
+		printf("CALL: pthread_mutex_lock\n");
 		pthread_mutex_lock(&pvars);
+		printf("RETURN: pthread_mutex_lock\n");
 		curstatus = this->deviceStatus;
+		printf("CALL: pthread_mutex_unlock\n");
 		pthread_mutex_unlock(&pvars);
 
 		/* time to shut up shop */
 		if (!(curstatus & FT_RUNNING)) {
 			// time to stop!
-
+			printf("\ngot close command\n");
 			sendCloseCommand();
 
 			closePort(); // need to release that file handle!!
@@ -689,13 +702,14 @@ void Fortius::run()
 		}
 
 		if ((curstatus & FT_PAUSED) && isDeviceOpen == true) {
-
+			printf("\n got pause\n");
 			closePort();
 			isDeviceOpen = false;
 
 		} else if (!(curstatus & FT_PAUSED) && (curstatus & FT_RUNNING) && isDeviceOpen == false) {
-
+			printf("\ndevice is not open for some reason...trying to open\n");
 			if (openPort()) {
+				printf("\nfailed to open device\n");
 				quit(2);
 				return; // open failed!
 			}
@@ -814,7 +828,7 @@ void Fortius::go_sleep (timespec *last_measured_time, int delay_msec)
 	time_passed = timespec_diff (last_measured_time, &current_time);
 	time_passed_msec = (int)time_passed.tv_sec * 1000 + (double)time_passed.tv_nsec/1000000.0;
 	if (delay_msec - time_passed_msec > 0) {
-		VLOG (2) << "Delay: " << delay_msec - time_passed_msec << " [msec]";
+		//VLOG (2) << "Delay: " << delay_msec - time_passed_msec << " [msec]";
 		usleep ((delay_msec - time_passed_msec) * 1000);
 	}
 }

@@ -153,10 +153,13 @@ bool CANTMaster::send_general_fe()
 	general_fe_t	general_fe;
 	timespec	current_time;
 
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) send_general_fe\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) send_general_fe\n" << std::endl;
 	heartrate_bpm = m_heartrate_bpm;
 	speed_kph = m_speed_kph;
 	distance_meters = m_distance_meters;
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) send_general_fe\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 
 	clock_gettime(CLOCK_MONOTONIC, &current_time);
@@ -221,9 +224,12 @@ bool CANTMaster::send_specific_trainer()
 	uint8_t			cadence_rpm;
 	uint16_t		power_produced_watts;
 
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) send_specific_trainer\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) send_specific_trainer\n" << std::endl;
 	power_produced_watts = m_power_produced_watts;
 	cadence_rpm =m_cadence_rpm;
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) send_specific_trainer\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 
 
@@ -351,9 +357,12 @@ bool CANTMaster::process_target_power(target_power_t*	target_power)
 	target_power_watts /= 4;					// so wait until it is in the double and div by 4
 
 
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) process_target_power\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) process_target_power\n" << std::endl;
 	m_target_power_watts = target_power_watts;
 	m_requested_mode = FT_ERGOMODE;
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) process_target_power\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 
 	//printf("\nSET: target_power_watts %f\n", target_power_watts);
@@ -392,10 +401,13 @@ bool CANTMaster::process_wind_resistance(wind_resistance_t* wind_resistance)
 		drafting_factor *= 0.01;	// convert to range 0-1
 	}
 
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) process_wind_resistance\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) process_wind_resistance\n" << std::endl;
 	m_wind_resistance_coef = wind_resistance_coef;
 	m_wind_speed_kph = wind_speed_kph;
 	m_drafting_factor = drafting_factor;
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) process_wind_resistance\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 //	printf("\nSET: wind resistance coef %f wind speed %f drafting factor %f\n", wind_resistance_coef, wind_speed_kph, drafting_factor);
 	VLOG (1) << "SET: wind res coef " << wind_resistance_coef << ", wind speed " << wind_speed_kph << ", draft fact " << drafting_factor;
@@ -427,10 +439,13 @@ bool CANTMaster::process_track_resistance(track_resistance_t* track_resistance)
 		crr *= 0.00005;
 	}
 
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) process_track_resistance\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) process_track_resistance\n" << std::endl;
 	m_slope = slope;
 	m_crr = crr;
 	m_requested_mode = FT_SSMODE;	// we will calculate power
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) process_track_resistance\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 
 	/* TODO: resolve the Slope mode issue
@@ -487,11 +502,14 @@ bool CANTMaster::process_user_configuration(user_configuration_t* user_configura
 		std::cout << "Invalid settings" << std::endl;
 		return false;
 	}
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) process_user_configuration\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) process_user_configuration\n" << std::endl;
 	m_user_weight_kg = user_weight_kg;
 	m_bike_weight_kg = bike_weight_kg;
 	m_wheel_circumference_mm = wheel_circumference_mm;
 	m_user_config_state = USER_CONFIG_STATE_RX;
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) process_user_configuration\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 	// printf("\nSET: user weight kg %f bike weight %f wheel circumference mm %f\n", user_weight_kg, bike_weight_kg, wheel_circumference_mm);
 	VLOG (1) << "SET: user weight " << user_weight_kg << " [kg], bike weight " << bike_weight_kg << " [kg], wheel circ " << wheel_circumference_mm << " [mm]";
@@ -565,13 +583,17 @@ double CANTMaster::calc_power_required_watts(){
 
 	// my user specs...get them
 	VLOG (2) <<"User weight: " << m_user_weight_kg << ", Bike weight: " << m_bike_weight_kg << ", Drafting factor: " << m_drafting_factor << ", Speed: " << m_speed_kph << ", Wind Speed: " << m_wind_speed_kph << ", Slope: " << m_slope;
+
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) calc_power_required_watts\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) calc_power_required_watts\n" << std::endl;
 	weight_kg = m_user_weight_kg + m_bike_weight_kg;
 	wind_resistance_coef = m_wind_resistance_coef;
 	crr = m_crr;
 	drafting_factor = m_drafting_factor;
 	speed_kph = m_speed_kph + m_wind_speed_kph;
 	slope = m_slope/100;				// slope is a percent...change it to a range  -1..1
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) calc_power_required_watts\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 
 	f_gravity = GRAVITY * sin(atan(slope)) * weight_kg;
@@ -725,10 +747,13 @@ bool CANTMaster::stop()
 
 bool CANTMaster::set_defaults (double init_user_weight, double init_bike_weight, double init_wheel_circumference_mm)
 {
+	//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) set_defaults\n" << std::endl;
 	pthread_mutex_lock(&m_vars_mutex);
+	//std::cout << "\n SET: pthread_mutex_lock(&m_vars_mutex) set_defaults\n" << std::endl;
 	m_user_weight_kg = init_user_weight;
 	m_bike_weight_kg = init_bike_weight;
 	m_wheel_circumference_mm = init_wheel_circumference_mm;
+	//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) set_defaults\n" << std::endl;
 	pthread_mutex_unlock(&m_vars_mutex);
 
 	return TRUE;
@@ -788,11 +813,17 @@ void* CANTMaster::mainloop(void)
 		}
 
 		// read stats from the Fortius
+
+		//std::cout << "\nCALL: m_fortius->getTelemetry \n" << std::endl;
 		m_fortius->getTelemetry(power_produced_watts, heartrate_bpm, cadence_rpm, speed_kph, distance_meters, buttons, steering, status);
+		//std::cout << "\nRETURN: m_fortius->getTelemetry \n" << std::endl;
 
 
 		// slope was sent in on track_resistance page
+		//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) main loop\n" << std::endl;
 		pthread_mutex_lock(&m_vars_mutex);
+		//std::cout << "\n RETURN: pthead_mutex_lock(&m_vars_mutex) main loop\n" << std::endl;
+
 		// get mode and requested load
 		target_power_watts = m_target_power_watts;
 		requested_mode = m_requested_mode;
@@ -805,28 +836,39 @@ void* CANTMaster::mainloop(void)
 		m_speed_kph = speed_kph;
 		m_distance_meters = distance_meters;
 		m_buttons = buttons;
+		//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) main loop\n" << std::endl;
 		pthread_mutex_unlock(&m_vars_mutex);
+		//std::cout << "\n RETURN: pthread_mutex_unlock(&m_vars_mutex) main loop\n" << std::endl;
 
 		// read buttons and adjust things as needed
 		if((buttons & (FT_PLUS | FT_MINUS)) == (FT_PLUS | FT_MINUS)){
 			requested_mode = FT_CALIBRATE;
 
+			//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) button plut mminus\n" << std::endl;
 			pthread_mutex_lock(&m_vars_mutex);
+			//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) button plut mminus\n" << std::endl;
 			m_requested_mode = requested_mode;
+			//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) button plut mminus\n" << std::endl;
 			pthread_mutex_unlock(&m_vars_mutex);
 			calibrate_count = 40;
 		}else if((buttons & FT_PLUS) == FT_PLUS){
 			target_power_watts+=10;		// add 10 watts
 			std::cout << "New load: " << target_power_watts << "[W]" << std::endl;
+			//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) button plus\n" << std::endl;
 			pthread_mutex_lock(&m_vars_mutex);
+			//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) button plus\n" << std::endl;
 			m_target_power_watts = target_power_watts;
+			//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) button plus\n" << std::endl;
 			pthread_mutex_unlock(&m_vars_mutex);
 
 		}else if((buttons & FT_MINUS) == FT_MINUS){
 			target_power_watts-=10;		// -10 watts
 			std::cout << "New load: " << target_power_watts << "[W]" << std::endl;
+			//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) button minus\n" << std::endl;
 			pthread_mutex_lock(&m_vars_mutex);
+			//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) button minus\n" << std::endl;
 			m_target_power_watts = target_power_watts;
+			//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) button minus\n" << std::endl;
 			pthread_mutex_unlock(&m_vars_mutex);
 		}
 
@@ -846,8 +888,11 @@ void* CANTMaster::mainloop(void)
 			// on the raw power numbers from the machine
 			if(0 >= calibrate_count--){
 				requested_mode = FT_ERGOMODE;
+				//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) calibrate\n" << std::endl;
 				pthread_mutex_lock(&m_vars_mutex);
+				//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) calibrate\n" << std::endl;
 				m_requested_mode = requested_mode;
+				//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) calibrate\n" << std::endl;
 				pthread_mutex_unlock(&m_vars_mutex);
 				std::cout << "Final calibration value: " << m_fortius->getBrakeCalibrationLoadRaw() << std::endl;
 
@@ -860,8 +905,11 @@ void* CANTMaster::mainloop(void)
 			std::cout << "Error: unknown mode" << std::endl;
 			requested_mode = FT_ERGOMODE;
 
+			//std::cout << "\n CALL: pthread_mutex_lock(&m_vars_mutex) unknown mode\n" << std::endl;
 			pthread_mutex_lock(&m_vars_mutex);
+			//std::cout << "\n RETURN: pthread_mutex_lock(&m_vars_mutex) unknown mode\n" << std::endl;
 			m_requested_mode = requested_mode;
+			//std::cout << "\n CALL: pthread_mutex_unlock(&m_vars_mutex) unknown mode\n" << std::endl;
 			pthread_mutex_unlock(&m_vars_mutex);
 		}
 
@@ -881,7 +929,7 @@ void* CANTMaster::mainloop(void)
 		VLOG_IF (2, requested_mode == FT_SSMODE) << "MODE: FT_SSMODE";
 		VLOG (2) << "power mk: " << power_produced_watts << "[W], cadence: " << cadence_rpm << "[rpm], speed: " << m_speed_kph << "[kmh]";
 
-		std::cout << "Speed: " << m_speed_kph << " [kmh], Cadence: " << cadence_rpm << " [rpm], Power: " << power_produced_watts << " [W]\r"  << std::flush;
+		//std::cout << "Speed: " << m_speed_kph << " [kmh], Cadence: " << cadence_rpm << " [rpm], Power: " << power_produced_watts << " [W]\r"  << std::flush;
 
 		/* debug
 		power_produced_watts = 403;
