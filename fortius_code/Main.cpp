@@ -162,6 +162,7 @@ int main(int argc, char* argv[])
 	ant_master->set_defaults (user_weight, bike_weight, wheel_circumference_mm);
 
 	do {
+		printf(".");
 		// check on  Fortius
 		fortius->getTelemetry(	fortius_telemetry.power, fortius_telemetry.heartrate,
 														fortius_telemetry.cadence, fortius_telemetry.speed,
